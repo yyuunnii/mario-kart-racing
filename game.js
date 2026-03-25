@@ -1340,14 +1340,14 @@ function showModeSelect() {
 }
 
 // 开始玩家模式
-function startPlayerMode() {
+function startPlayerGame() {
     gameMode = 'player';
     document.getElementById('modeSelectScreen').style.display = 'none';
     initGame();
 }
 
 // 开始AI竞速赛模式
-function startAIRaceMode() {
+function startAIRace() {
     gameMode = 'aiRace';
     document.getElementById('modeSelectScreen').style.display = 'none';
     initGame();
@@ -1356,6 +1356,27 @@ function startAIRaceMode() {
 // 显示模式选择
 function showModeSelectScreen() {
     showModeSelect();
+}
+
+// 返回模式选择
+function backToModeSelect() {
+    gameState = 'modeSelect';
+    document.getElementById('modeSelectScreen').style.display = 'flex';
+    document.getElementById('gameOverScreen').style.display = 'none';
+    document.getElementById('aiRaceResultScreen').style.display = 'none';
+    document.getElementById('watchingBadge').classList.add('hidden');
+}
+
+// 重新开始游戏
+function restartGame() {
+    document.getElementById('gameOverScreen').style.display = 'none';
+    initGame();
+}
+
+// 重新开始AI竞速赛
+function restartAIRace() {
+    document.getElementById('aiRaceResultScreen').style.display = 'none';
+    initGame();
 }
 
 // 游戏循环中添加玩家输入处理
