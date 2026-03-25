@@ -130,6 +130,7 @@ function showModeSelect() {
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('modeSelectScreen').classList.remove('hidden');
     document.getElementById('characterSelectScreen').classList.add('hidden');
+    gameState = 'modeSelect';
 }
 
 function showCharacterSelect() {
@@ -426,11 +427,14 @@ function render() {
     ctx.fillStyle = '#2d5016';
     ctx.fillRect(0, 0, 1000, 700);
     
-    // 绘制赛道
-    drawTrack();
-    
-    // 绘制赛车
-    karts.forEach(kart => drawKart(kart));
+    // 只在游戏进行或倒计时状态时绘制赛道和赛车
+    if (gameState === 'racing' || gameState === 'countdown') {
+        // 绘制赛道
+        drawTrack();
+        
+        // 绘制赛车
+        karts.forEach(kart => drawKart(kart));
+    }
 }
 
 function drawTrack() {
@@ -503,8 +507,10 @@ window.addEventListener('orientationchange', () => {
 // 初始调整大小
 resizeCanvas();
 
+// 初始显示开始界面
 document.getElementById('startScreen').classList.remove('hidden');
 document.getElementById('modeSelectScreen').classList.add('hidden');
+gameState = 'start';
 
 // 启动游戏循环
 gameLoop();
