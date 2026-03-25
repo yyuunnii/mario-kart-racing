@@ -1111,112 +1111,178 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// 触摸控制支持
+// 摇杆状态
+const joystick = {
+    active: false,
+    originX: 0,
+    originY: 0,
+    currentX: 0,
+    currentY: 0,
+    deltaX: 0,
+    deltaY: 0,
+    maxDistance: 45 // 摇杆最大移动距离
+};
+
+// 触摸控制支持 - 虚拟摇杆
 function setupTouchControls() {
-    const dUp = document.getElementById('dUp');
-    const dDown = document.getElementById('dDown');
-    const dLeft = document.getElementById('dLeft');
-    const dRight = document.getElementById('dRight');
-    const btnItem = document.getElementById('btnItem');
-    const btnDrift = document.getElementById('btnDrift');
+    const joystickBase = document.getElementById('joystickBase');
+    const joystickKnob = document.getElementById('joystick');
+    const gasButton = document.getElementById('gasButton');
+    const brakeButton = document.getElementById('brakeButton');
+    const itemButton = document.getElementById('itemButton');
+    const driftButton = document.getElementById('driftButton');
     
-    if (!dUp) return; // 如果元素不存在则退出
+    if (!joystickBase) return; // 如果元素不存在则退出
     
-    // 方向键触摸事件
-    const addTouchListeners = (element, key) => {
+    // 获取摇杆底座中心位置
+    function getJoystickCenter() {
+        const rect = joystickBase.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2
+        };
+    }
+    
+    // 更新摇杆位置
+    function updateJoystick(touchX, touchY) {
+        const center = getJoystickCenter();
+        let dx = touchX - center.x;
+        let dy = touchY - center.y;
+        
+        // 计算距离和角度
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        
+        // 限制摇杆移动范围
+        const clampedDistance = Math.min(distance, joystick.maxDistance);
+        
+        // 更新摇杆位置
+        joystick.currentX = Math.cos(angle) * clampedDistance;
+        joystick.currentY = Math.sin(angle) * clampedDistance;
+        
+        // 应用样式
+        joystickKnob.style.transform = `translate(calc(-50% + ${joystick.currentX}px), calc(-50% + ${joystick.currentY}px))`;
+        
+        // 更新输入状态（归一化到 -1 到 1）
+        joystick.deltaX = joystick.currentX / joystick.maxDistance;
+        joystick.deltaY = joystick.currentY / joystick.maxDistance;
+        
+        // 设置方向键状态
+        keys.left = joystick.deltaX < -0.3;
+        keys.right = joystick.deltaX > 0.3;
+        keys.up = joystick.deltaY < -0.3;
+        keys.down = joystick.deltaY > 0.3;
+    }
+    
+    // 重置摇杆
+    function resetJoystick() {
+        joystick.active = false;
+        joystick.currentX = 0;
+        joystick.currentY = 0;
+        joystick.deltaX = 0;
+        joystick.deltaY = 0;
+        joystickKnob.style.transform = 'translate(-50%, -50%)';
+        joystickKnob.classList.remove('active');
+        
+        keys.left = false;
+        keys.right = false;
+        keys.up = false;
+        keys.down = false;
+    }
+    
+    // 摇杆触摸事件
+    joystickBase.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        joystick.active = true;
+        joystickKnob.classList.add('active');
+        const touch = e.touches[0];
+        updateJoystick(touch.clientX, touch.clientY);
+    }, { passive: false });
+    
+    joystickBase.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (joystick.active) {
+            const touch = e.touches[0];
+            updateJoystick(touch.clientX, touch.clientY);
+        }
+    }, { passive: false });
+    
+    joystickBase.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        resetJoystick();
+    });
+    
+    joystickBase.addEventListener('touchcancel', (e) => {
+        e.preventDefault();
+        resetJoystick();
+    });
+    
+    // 鼠标支持（用于桌面测试）
+    let mouseDown = false;
+    joystickBase.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        mouseDown = true;
+        joystick.active = true;
+        joystickKnob.classList.add('active');
+        updateJoystick(e.clientX, e.clientY);
+    });
+    
+    window.addEventListener('mousemove', (e) => {
+        if (mouseDown && joystick.active) {
+            updateJoystick(e.clientX, e.clientY);
+        }
+    });
+    
+    window.addEventListener('mouseup', () => {
+        if (mouseDown) {
+            mouseDown = false;
+            resetJoystick();
+        }
+    });
+    
+    // 添加按钮触摸事件
+    const addButtonListeners = (element, key) => {
         element.addEventListener('touchstart', (e) => {
             e.preventDefault();
             keys[key] = true;
-            element.style.transform = element.id === 'dUp' ? 'translateX(-50%) scale(0.95)' :
-                                      element.id === 'dDown' ? 'translateX(-50%) scale(0.95)' :
-                                      element.id === 'dLeft' ? 'translateY(-50%) scale(0.95)' :
-                                      element.id === 'dRight' ? 'translateY(-50%) scale(0.95)' : 'scale(0.95)';
+            element.classList.add('active');
         }, { passive: false });
         
         element.addEventListener('touchend', (e) => {
             e.preventDefault();
             keys[key] = false;
-            element.style.transform = element.id === 'dUp' ? 'translateX(-50%)' :
-                                      element.id === 'dDown' ? 'translateX(-50%)' :
-                                      element.id === 'dLeft' ? 'translateY(-50%)' :
-                                      element.id === 'dRight' ? 'translateY(-50%)' : '';
+            element.classList.remove('active');
         });
         
         element.addEventListener('touchcancel', (e) => {
             e.preventDefault();
             keys[key] = false;
-            element.style.transform = element.id === 'dUp' ? 'translateX(-50%)' :
-                                      element.id === 'dDown' ? 'translateX(-50%)' :
-                                      element.id === 'dLeft' ? 'translateY(-50%)' :
-                                      element.id === 'dRight' ? 'translateY(-50%)' : '';
+            element.classList.remove('active');
         });
         
-        // 鼠标事件（用于桌面测试）
         element.addEventListener('mousedown', (e) => {
             e.preventDefault();
             keys[key] = true;
+            element.classList.add('active');
         });
         
         element.addEventListener('mouseup', (e) => {
             e.preventDefault();
             keys[key] = false;
+            element.classList.remove('active');
         });
         
-        element.addEventListener('mouseleave', (e) => {
+        element.addEventListener('mouseleave', () => {
             keys[key] = false;
+            element.classList.remove('active');
         });
     };
     
-    addTouchListeners(dUp, 'up');
-    addTouchListeners(dDown, 'down');
-    addTouchListeners(dLeft, 'left');
-    addTouchListeners(dRight, 'right');
-    
-    // 道具按钮
-    btnItem.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        keys.space = true;
-        btnItem.style.transform = 'scale(0.95)';
-    }, { passive: false });
-    
-    btnItem.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        keys.space = false;
-        btnItem.style.transform = '';
-    });
-    
-    btnItem.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        keys.space = true;
-    });
-    
-    btnItem.addEventListener('mouseup', (e) => {
-        e.preventDefault();
-        keys.space = false;
-    });
-    
-    // 漂移按钮
-    btnDrift.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        keys.shift = true;
-        btnDrift.style.transform = 'scale(0.95)';
-    }, { passive: false });
-    
-    btnDrift.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        keys.shift = false;
-        btnDrift.style.transform = '';
-    });
-    
-    btnDrift.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        keys.shift = true;
-    });
-    
-    btnDrift.addEventListener('mouseup', (e) => {
-        e.preventDefault();
-        keys.shift = false;
-    });
+    // 绑定按钮
+    if (gasButton) addButtonListeners(gasButton, 'up');
+    if (brakeButton) addButtonListeners(brakeButton, 'down');
+    if (itemButton) addButtonListeners(itemButton, 'space');
+    if (driftButton) addButtonListeners(driftButton, 'shift');
     
     // 防止触摸时页面滚动
     document.body.addEventListener('touchmove', (e) => {

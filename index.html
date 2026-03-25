@@ -3,119 +3,335 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>马里奥卡丁车 - Mario Kart Racing</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-        body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden;
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a2e; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        /* 竖屏提示 - 强制横屏 */
+        #rotateHint {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
         }
-        #gameTitle { color: #ffd700; font-size: 2rem; font-weight: bold; text-shadow: 3px 3px 0 #e74c3c, 6px 6px 0 #3498db; margin-bottom: 10px; letter-spacing: 2px; }
-        @media (max-width: 768px) { #gameTitle { font-size: 1.2rem; margin-bottom: 5px; } }
-        #gameContainer { position: relative; border-radius: 15px; box-shadow: 0 0 30px rgba(0,0,0,0.5), 0 0 60px rgba(255,215,0,0.2); overflow: hidden; max-width: 100vw; max-height: 70vh; }
-        @media (max-width: 768px) { #gameContainer { border-radius: 10px; } }
-        #gameCanvas { display: block; background: #2d5016; max-width: 100%; max-height: 70vh; }
+        @media screen and (orientation: portrait) {
+            #rotateHint { display: flex; }
+            #gameWrapper { display: none !important; }
+        }
+        #rotateHint .phone-icon { font-size: 80px; margin-bottom: 20px; animation: rotatePhone 2s ease-in-out infinite; }
+        @keyframes rotatePhone { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } }
+        #rotateHint h2 { font-size: 24px; margin-bottom: 10px; color: #ffd700; }
+        #rotateHint p { font-size: 16px; color: #aaa; }
+        
+        /* 游戏容器 */
+        #gameWrapper {
+            width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        #gameTitle { color: #ffd700; font-size: 1.5rem; font-weight: bold; text-shadow: 2px 2px 0 #e74c3c, 4px 4px 0 #3498db; margin-bottom: 5px; letter-spacing: 2px; }
+        @media (max-width: 768px) { #gameTitle { display: none; } }
+        
+        #gameContainer { 
+            position: relative; 
+            border-radius: 10px; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5), 0 0 40px rgba(255,215,0,0.2); 
+            overflow: hidden; 
+        }
+        @media (max-width: 768px) { 
+            #gameContainer { border-radius: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; }
+        }
+        
+        #gameCanvas { display: block; background: #2d5016; }
+        @media (max-width: 768px) { #gameCanvas { width: 100%; height: 100%; } }
+        
         #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        .ui-panel { position: absolute; background: rgba(0,0,0,0.7); border-radius: 10px; padding: 10px 15px; color: white; font-weight: bold; }
-        @media (max-width: 768px) { .ui-panel { padding: 5px 10px; border-radius: 8px; font-size: 0.8rem; } }
-        #speedometer { bottom: 20px; right: 20px; text-align: center; }
-        @media (max-width: 768px) { #speedometer { bottom: 10px; right: 10px; } }
-        #speedValue { font-size: 2rem; color: #ffd700; }
+        .ui-panel { 
+            position: absolute; 
+            background: rgba(0,0,0,0.7); 
+            border-radius: 8px; 
+            padding: 8px 12px; 
+            color: white; 
+            font-weight: bold; 
+            font-size: 0.9rem;
+        }
+        @media (max-width: 768px) { .ui-panel { padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; } }
+        
+        #speedometer { bottom: 15px; right: 15px; text-align: center; }
+        @media (max-width: 768px) { #speedometer { bottom: 100px; right: 10px; } }
+        #speedValue { font-size: 1.5rem; color: #ffd700; }
         @media (max-width: 768px) { #speedValue { font-size: 1.2rem; } }
-        #lapInfo { top: 20px; left: 20px; }
+        
+        #lapInfo { top: 15px; left: 15px; }
         @media (max-width: 768px) { #lapInfo { top: 10px; left: 10px; } }
-        #ranking { top: 20px; right: 20px; text-align: right; }
+        
+        #ranking { top: 15px; right: 15px; text-align: right; }
         @media (max-width: 768px) { #ranking { top: 10px; right: 10px; } }
-        #itemBox { bottom: 20px; left: 50%; transform: translateX(-50%); width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; border: 3px solid #ffd700; }
-        @media (max-width: 768px) { #itemBox { width: 50px; height: 50px; font-size: 1.5rem; bottom: 10px; } }
-        #controls { margin-top: 15px; color: #aaa; font-size: 0.9rem; text-align: center; }
+        
+        #itemBox { 
+            bottom: 15px; left: 50%; transform: translateX(-50%); 
+            width: 60px; height: 60px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 2rem; border: 3px solid #ffd700; 
+        }
+        @media (max-width: 768px) { #itemBox { width: 50px; height: 50px; font-size: 1.8rem; bottom: 90px; } }
+        
+        #controls { margin-top: 10px; color: #aaa; font-size: 0.8rem; text-align: center; }
         @media (max-width: 768px) { #controls { display: none; } }
-        #startScreen, #gameOverScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 100; }
-        .screen-title { font-size: 3rem; color: #ffd700; margin-bottom: 20px; text-shadow: 2px 2px 0 #e74c3c; }
-        @media (max-width: 768px) { .screen-title { font-size: 1.8rem; margin-bottom: 15px; } }
-        .btn { background: linear-gradient(145deg, #e74c3c, #c0392b); color: white; border: none; padding: 15px 40px; font-size: 1.3rem; border-radius: 30px; cursor: pointer; transition: all 0.3s; box-shadow: 0 5px 15px rgba(231,76,60,0.4); margin: 10px; }
-        @media (max-width: 768px) { .btn { padding: 12px 30px; font-size: 1rem; } }
-        .btn:hover, .btn:active { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(231,76,60,0.6); }
+        
+        #startScreen, #gameOverScreen { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            pointer-events: auto; z-index: 100; 
+        }
+        .screen-title { font-size: 2.5rem; color: #ffd700; margin-bottom: 15px; text-shadow: 2px 2px 0 #e74c3c; }
+        @media (max-width: 768px) { .screen-title { font-size: 1.8rem; } }
+        
+        .btn { 
+            background: linear-gradient(145deg, #e74c3c, #c0392b); 
+            color: white; border: none; padding: 12px 35px; 
+            font-size: 1.1rem; border-radius: 25px; cursor: pointer; 
+            transition: all 0.3s; box-shadow: 0 5px 15px rgba(231,76,60,0.4); margin: 8px; 
+        }
+        @media (max-width: 768px) { .btn { padding: 10px 25px; font-size: 1rem; } }
+        .btn:hover, .btn:active { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(231,76,60,0.6); }
+        
         .hidden { display: none !important; }
-        #countdown { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 6rem; color: #ffd700; font-weight: bold; text-shadow: 4px 4px 0 #e74c3c; z-index: 50; }
+        
+        #countdown { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            font-size: 5rem; color: #ffd700; font-weight: bold; text-shadow: 4px 4px 0 #e74c3c; z-index: 50; 
+        }
         @media (max-width: 768px) { #countdown { font-size: 4rem; } }
         
-        /* 移动端触摸控制 */
-        #touchControls { display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 180px; z-index: 200; pointer-events: none; }
-        @media (max-width: 768px) { #touchControls { display: flex; } }
-        .touch-area { position: absolute; pointer-events: auto; }
-        #dPad { left: 20px; bottom: 20px; width: 140px; height: 140px; }
-        .d-btn { position: absolute; width: 50px; height: 50px; background: rgba(255,255,255,0.3); border: 2px solid rgba(255,255,255,0.5); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: white; touch-action: manipulation; transition: all 0.1s; }
-        .d-btn:active { background: rgba(255,215,0,0.6); border-color: #ffd700; transform: scale(0.95); }
-        #dUp { top: 0; left: 45px; }
-        #dDown { bottom: 0; left: 45px; }
-        #dLeft { left: 0; top: 45px; }
-        #dRight { right: 0; top: 45px; }
+        /* 移动端触摸控制 - 虚拟摇杆 */
+        #touchControls { display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 200; pointer-events: none; }
+        @media (max-width: 768px) { #touchControls { display: block; } }
         
-        #actionButtons { right: 20px; bottom: 20px; width: 140px; height: 140px; }
-        .action-btn { position: absolute; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: bold; color: white; touch-action: manipulation; transition: all 0.1s; }
-        .action-btn:active { transform: scale(0.95); }
-        #btnItem { top: 10px; right: 10px; background: linear-gradient(145deg, #9b59b6, #8e44ad); border: 3px solid #ffd700; }
-        #btnDrift { bottom: 10px; right: 10px; background: linear-gradient(145deg, #3498db, #2980b9); border: 3px solid #fff; }
+        /* 虚拟摇杆底座 */
+        #joystickBase {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            width: 140px;
+            height: 140px;
+            background: rgba(255,255,255,0.1);
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        
+        /* 虚拟摇杆 */
+        #joystick {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(145deg, rgba(255,215,0,0.9), rgba(255,165,0,0.9));
+            border: 3px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: none;
+        }
+        
+        #joystick.active {
+            background: linear-gradient(145deg, rgba(255,100,100,0.9), rgba(200,50,50,0.9));
+        }
+        
+        /* 右侧控制按钮区域 */
+        #rightControls {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            pointer-events: auto;
+        }
+        
+        /* 油门按钮 */
+        #gasButton {
+            width: 90px;
+            height: 90px;
+            background: linear-gradient(145deg, rgba(76,175,80,0.8), rgba(56,142,60,0.8));
+            border: 3px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: white;
+            touch-action: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.1s;
+        }
+        
+        #gasButton:active, #gasButton.active {
+            transform: scale(0.95);
+            background: linear-gradient(145deg, rgba(76,175,80,1), rgba(56,142,60,1));
+        }
+        
+        /* 刹车按钮 */
+        #brakeButton {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(145deg, rgba(231,76,60,0.8), rgba(192,57,43,0.8));
+            border: 3px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            touch-action: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.1s;
+        }
+        
+        #brakeButton:active, #brakeButton.active {
+            transform: scale(0.95);
+            background: linear-gradient(145deg, rgba(231,76,60,1), rgba(192,57,43,1));
+        }
+        
+        /* 道具按钮 */
+        #itemButton {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(145deg, rgba(155,89,182,0.8), rgba(142,68,173,0.8));
+            border: 3px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            color: white;
+            touch-action: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.1s;
+        }
+        
+        #itemButton:active, #itemButton.active {
+            transform: scale(0.95);
+            background: linear-gradient(145deg, rgba(155,89,182,1), rgba(142,68,173,1));
+        }
+        
+        /* 漂移按钮 */
+        #driftButton {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(145deg, rgba(52,152,219,0.8), rgba(41,128,185,0.8));
+            border: 3px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+            touch-action: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.1s;
+        }
+        
+        #driftButton:active, #driftButton.active {
+            transform: scale(0.95);
+            background: linear-gradient(145deg, rgba(52,152,219,1), rgba(41,128,185,1));
+        }
+        
+        /* 按钮标签 */
+        .btn-label {
+            position: absolute;
+            bottom: -18px;
+            font-size: 10px;
+            color: rgba(255,255,255,0.7);
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
-    <div id="gameTitle">🏎️ 马里奥卡丁车</div>
-    
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="1000" height="700"></canvas>
-        
-        <div id="ui">
-            <div id="lapInfo" class="ui-panel">
-                <div>圈数</div>
-                <div id="lapValue">1/3</div>
-            </div>
-            <div id="ranking" class="ui-panel">
-                <div>排名</div>
-                <div id="rankValue">1/4</div>
-            </div>
-            <div id="speedometer" class="ui-panel">
-                <div>速度</div>
-                <div id="speedValue">0</div>
-            </div>
-            <div id="itemBox" class="ui-panel">❓</div>
-        </div>
-        
-        <div id="startScreen">
-            <div class="screen-title">🏎️ 马里奥卡丁车</div>
-            <button class="btn" onclick="startGame()">开始游戏</button>
-            <div style="color: #aaa; margin-top: 20px; font-size: 0.9rem; text-align: center;">
-                <div>电脑端：WASD/方向键移动，空格使用道具，Shift漂移</div>
-                <div style="margin-top: 10px;">手机端：使用屏幕下方虚拟按键</div>
-            </div>
-        </div>
-        
-        <div id="gameOverScreen" class="hidden">
-            <div class="screen-title">🏁 比赛结束</div>
-            <div id="finalRank" style="font-size: 2rem; color: white; margin-bottom: 20px;"></div>
-            <button class="btn" onclick="restartGame()">再来一局</button>
-        </div>
-        
-        <div id="countdown" class="hidden">3</div>
+    <!-- 竖屏提示 -->
+    <div id="rotateHint">
+        <div class="phone-icon">📱</div>
+        <h2>请旋转手机</h2>
+        <p>为了获得最佳游戏体验，<br>请将手机旋转至横屏模式</p>
     </div>
-    
-    <div id="controls">WASD/方向键移动 | 空格使用道具 | Shift漂移</div>
-    
-    <!-- 移动端触摸控制 -->
-    <div id="touchControls">
-        <div id="dPad" class="touch-area">
-            <div class="d-btn" id="dUp">▲</div>
-            <div class="d-btn" id="dDown">▼</div>
-            <div class="d-btn" id="dLeft">◀</div>
-            <div class="d-btn" id="dRight">▶</div>
-        </div>
-        <div id="actionButtons" class="touch-area">
-            <div class="action-btn" id="btnItem">🎁</div>
-            <div class="action-btn" id="btnDrift">💨</div>
+
+    <div id="gameWrapper">
+        <div id="gameTitle">🏎️ MARIO KART RACING 🏎️</div>
+        
+        <div id="gameContainer">
+            <canvas id="gameCanvas" width="1000" height="700"></canvas>
+            
+            <!-- UI 层 -->
+            <div id="ui">
+                <div id="lapInfo" class="ui-panel">
+                    <div>圈数</div>
+                    <div id="lapValue">1/3</div>
+                </div>
+                <div id="ranking" class="ui-panel">
+                    <div>排名</div>
+                    <div id="rankValue">1/4</div>
+                </div>
+                <div id="speedometer" class="ui-panel">
+                    <div id="speedValue">0</div>
+                    <div>km/h</div>
+                </div>
+                <div id="itemBox" class="ui-panel">❓</div>
+            </div>
+            
+            <!-- 开始界面 -->
+            <div id="startScreen">
+                <div class="screen-title">🏎️ 马里奥卡丁车</div>
+                <button class="btn" onclick="startGame()">开始游戏</button>
+                <div id="controls">WASD/方向键移动 | 空格使用道具 | Shift漂移</div>
+            </div>
+            
+            <!-- 倒计时 -->
+            <div id="countdown" class="hidden">3</div>
+            
+            <!-- 游戏结束界面 -->
+            <div id="gameOverScreen" class="hidden">
+                <div class="screen-title">🏁 比赛结束</div>
+                <div id="finalRank" style="color: white; font-size: 1.5rem; margin-bottom: 20px;"></div>
+                <button class="btn" onclick="restartGame()">再来一局</button>
+            </div>
+            
+            <!-- 移动端触摸控制 -->
+            <div id="touchControls">
+                <!-- 虚拟摇杆 -->
+                <div id="joystickBase">
+                    <div id="joystick"></div>
+                </div>
+                
+                <!-- 右侧按钮 -->
+                <div id="rightControls">
+                    <div id="itemButton">🎁<span class="btn-label">道具</span></div>
+                    <div id="driftButton">💨<span class="btn-label">漂移</span></div>
+                    <div id="brakeButton">🛑<span class="btn-label">刹车</span></div>
+                    <div id="gasButton">🚀<span class="btn-label">油门</span></div>
+                </div>
+            </div>
         </div>
     </div>
-    
+
     <script src="game.js"></script>
 </body>
 </html>
