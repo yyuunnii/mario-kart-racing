@@ -1111,5 +1111,136 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
+// 触摸控制支持
+function setupTouchControls() {
+    const dUp = document.getElementById('dUp');
+    const dDown = document.getElementById('dDown');
+    const dLeft = document.getElementById('dLeft');
+    const dRight = document.getElementById('dRight');
+    const btnItem = document.getElementById('btnItem');
+    const btnDrift = document.getElementById('btnDrift');
+    
+    if (!dUp) return; // 如果元素不存在则退出
+    
+    // 方向键触摸事件
+    const addTouchListeners = (element, key) => {
+        element.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            keys[key] = true;
+            element.style.transform = element.id === 'dUp' ? 'translateX(-50%) scale(0.95)' :
+                                      element.id === 'dDown' ? 'translateX(-50%) scale(0.95)' :
+                                      element.id === 'dLeft' ? 'translateY(-50%) scale(0.95)' :
+                                      element.id === 'dRight' ? 'translateY(-50%) scale(0.95)' : 'scale(0.95)';
+        }, { passive: false });
+        
+        element.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+            element.style.transform = element.id === 'dUp' ? 'translateX(-50%)' :
+                                      element.id === 'dDown' ? 'translateX(-50%)' :
+                                      element.id === 'dLeft' ? 'translateY(-50%)' :
+                                      element.id === 'dRight' ? 'translateY(-50%)' : '';
+        });
+        
+        element.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+            element.style.transform = element.id === 'dUp' ? 'translateX(-50%)' :
+                                      element.id === 'dDown' ? 'translateX(-50%)' :
+                                      element.id === 'dLeft' ? 'translateY(-50%)' :
+                                      element.id === 'dRight' ? 'translateY(-50%)' : '';
+        });
+        
+        // 鼠标事件（用于桌面测试）
+        element.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            keys[key] = true;
+        });
+        
+        element.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            keys[key] = false;
+        });
+        
+        element.addEventListener('mouseleave', (e) => {
+            keys[key] = false;
+        });
+    };
+    
+    addTouchListeners(dUp, 'up');
+    addTouchListeners(dDown, 'down');
+    addTouchListeners(dLeft, 'left');
+    addTouchListeners(dRight, 'right');
+    
+    // 道具按钮
+    btnItem.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.space = true;
+        btnItem.style.transform = 'scale(0.95)';
+    }, { passive: false });
+    
+    btnItem.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.space = false;
+        btnItem.style.transform = '';
+    });
+    
+    btnItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        keys.space = true;
+    });
+    
+    btnItem.addEventListener('mouseup', (e) => {
+        e.preventDefault();
+        keys.space = false;
+    });
+    
+    // 漂移按钮
+    btnDrift.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.shift = true;
+        btnDrift.style.transform = 'scale(0.95)';
+    }, { passive: false });
+    
+    btnDrift.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.shift = false;
+        btnDrift.style.transform = '';
+    });
+    
+    btnDrift.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        keys.shift = true;
+    });
+    
+    btnDrift.addEventListener('mouseup', (e) => {
+        e.preventDefault();
+        keys.shift = false;
+    });
+    
+    // 防止触摸时页面滚动
+    document.body.addEventListener('touchmove', (e) => {
+        if (e.target.closest('#touchControls')) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+}
+
+// 防止双指缩放
+document.addEventListener('gesturestart', (e) => {
+    e.preventDefault();
+});
+
+document.addEventListener('gesturechange', (e) => {
+    e.preventDefault();
+});
+
+document.addEventListener('gestureend', (e) => {
+    e.preventDefault();
+});
+
+// 初始化触摸控制
+setupTouchControls();
+
 // 启动游戏循环
 requestAnimationFrame(gameLoop);
