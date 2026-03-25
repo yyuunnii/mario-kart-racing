@@ -416,10 +416,70 @@
             <div id="modeSelectScreen">
                 <div class="screen-title">🏎️ 马里奥卡丁车</div>
                 <div class="mode-description">选择游戏模式开始比赛</div>
-                <button class="btn" onclick="startPlayerGame()">🎮 玩家模式</button>
+                <button class="btn" onclick="showCharacterSelect()">🎮 玩家模式</button>
                 <div class="mode-description">亲自驾驶，与3个AI对手竞速</div>
                 <button class="btn btn-secondary" onclick="startAIRace()">🤖 AI竞速赛</button>
                 <div class="mode-description">观看4个AI自动比赛，查看排行榜</div>
+            </div>
+            
+            <!-- 角色和车辆选择界面 -->
+            <div id="characterSelectScreen" class="hidden">
+                <div class="screen-title">🎮 选择你的角色</div>
+                
+                <!-- 玩家名字输入 -->
+                <div style="margin-bottom: 20px; text-align: center;">
+                    <label style="color: #ffd700; font-size: 1rem; display: block; margin-bottom: 8px;">玩家名字</label>
+                    <input type="text" id="playerNameInput" placeholder="输入你的名字" maxlength="10" 
+                           style="padding: 10px 15px; font-size: 1rem; border-radius: 8px; border: 2px solid #ffd700; 
+                                  background: rgba(0,0,0,0.5); color: white; text-align: center; width: 200px;">
+                </div>
+                
+                <!-- 车辆选择 -->
+                <div style="margin-bottom: 20px;">
+                    <div style="color: #ffd700; font-size: 1rem; margin-bottom: 15px; text-align: center;">选择车辆类型</div>
+                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                        <!-- 标准型 -->
+                        <div class="car-option" data-car="standard" onclick="selectCar('standard')" style="cursor: pointer; padding: 15px; border-radius: 10px; border: 3px solid #ffd700; background: rgba(255,215,0,0.2); text-align: center; min-width: 120px;">
+                            <div style="font-size: 2rem;">🏎️</div>
+                            <div style="color: white; font-weight: bold; margin-top: 5px;">标准型</div>
+                            <div style="color: #aaa; font-size: 0.75rem; margin-top: 5px;">平衡属性</div>
+                            <div style="color: #4ade80; font-size: 0.7rem; margin-top: 3px;">速度★★★<br>加速★★★<br>操控★★★</div>
+                        </div>
+                        <!-- 速度型 -->
+                        <div class="car-option" data-car="speed" onclick="selectCar('speed')" style="cursor: pointer; padding: 15px; border-radius: 10px; border: 3px solid #666; background: rgba(0,0,0,0.3); text-align: center; min-width: 120px;">
+                            <div style="font-size: 2rem;">🚀</div>
+                            <div style="color: white; font-weight: bold; margin-top: 5px;">速度型</div>
+                            <div style="color: #aaa; font-size: 0.75rem; margin-top: 5px;">极速之王</div>
+                            <div style="color: #4ade80; font-size: 0.7rem; margin-top: 3px;">速度★★★★★<br>加速★★<br>操控★★</div>
+                        </div>
+                        <!-- 加速型 -->
+                        <div class="car-option" data-car="acceleration" onclick="selectCar('acceleration')" style="cursor: pointer; padding: 15px; border-radius: 10px; border: 3px solid #666; background: rgba(0,0,0,0.3); text-align: center; min-width: 120px;">
+                            <div style="font-size: 2rem;">⚡</div>
+                            <div style="color: white; font-weight: bold; margin-top: 5px;">加速型</div>
+                            <div style="color: #aaa; font-size: 0.75rem; margin-top: 5px;">起步领先</div>
+                            <div style="color: #4ade80; font-size: 0.7rem; margin-top: 3px;">速度★★★<br>加速★★★★★<br>操控★★★</div>
+                        </div>
+                        <!-- 操控型 -->
+                        <div class="car-option" data-car="handling" onclick="selectCar('handling')" style="cursor: pointer; padding: 15px; border-radius: 10px; border: 3px solid #666; background: rgba(0,0,0,0.3); text-align: center; min-width: 120px;">
+                            <div style="font-size: 2rem;">🎯</div>
+                            <div style="color: white; font-weight: bold; margin-top: 5px;">操控型</div>
+                            <div style="color: #aaa; font-size: 0.75rem; margin-top: 5px;">灵活过弯</div>
+                            <div style="color: #4ade80; font-size: 0.7rem; margin-top: 3px;">速度★★<br>加速★★★<br>操控★★★★★</div>
+                        </div>
+                        <!-- 重型 -->
+                        <div class="car-option" data-car="heavy" onclick="selectCar('heavy')" style="cursor: pointer; padding: 15px; border-radius: 10px; border: 3px solid #666; background: rgba(0,0,0,0.3); text-align: center; min-width: 120px;">
+                            <div style="font-size: 2rem;">🛡️</div>
+                            <div style="color: white; font-weight: bold; margin-top: 5px;">重型</div>
+                            <div style="color: #aaa; font-size: 0.75rem; margin-top: 5px;">稳定耐撞</div>
+                            <div style="color: #4ade80; font-size: 0.7rem; margin-top: 3px;">速度★★★<br>加速★★<br>操控★★★<br>重量★★★★★</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 15px; margin-top: 10px;">
+                    <button class="btn" onclick="confirmCharacterSelect()">开始比赛</button>
+                    <button class="btn btn-secondary" onclick="backToModeSelect()">返回</button>
+                </div>
             </div>
             
             <!-- 观看中标识 -->

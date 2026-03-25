@@ -77,9 +77,24 @@ const ITEM_BOXES = [
     { x: 130, y: 350, active: true }
 ];
 
+// 车辆类型配置
+const CAR_TYPES = {
+    standard: { name: '标准型', emoji: '🏎️', maxSpeed: 12, acceleration: 0.3, turnSpeed: 0.08, weight: 1.0, color: '#e74c3c' },
+    speed: { name: '速度型', emoji: '🚀', maxSpeed: 15, acceleration: 0.25, turnSpeed: 0.06, weight: 0.8, color: '#3498db' },
+    acceleration: { name: '加速型', emoji: '⚡', maxSpeed: 12, acceleration: 0.45, turnSpeed: 0.08, weight: 0.9, color: '#f39c12' },
+    handling: { name: '操控型', emoji: '🎯', maxSpeed: 10, acceleration: 0.3, turnSpeed: 0.12, weight: 0.7, color: '#27ae60' },
+    heavy: { name: '重型', emoji: '🛡️', maxSpeed: 11, acceleration: 0.22, turnSpeed: 0.07, weight: 1.5, color: '#8e44ad' }
+};
+
+// 玩家配置
+let playerConfig = {
+    name: '玩家',
+    carType: 'standard'
+};
+
 // 车辆类
 class Kart {
-    constructor(id, x, y, color, isPlayer = false, character = 'Mario') {
+    constructor(id, x, y, color, isPlayer = false, character = 'Mario', carType = null) {
         this.id = id;
         this.x = x;
         this.y = y;
@@ -87,13 +102,30 @@ class Kart {
         this.vy = 0;
         this.angle = 0;
         this.speed = 0;
-        this.maxSpeed = isPlayer ? 12 : 9 + Math.random() * 2;
-        this.acceleration = 0.3;
+        
+        // 应用车辆类型属性
+        const carConfig = isPlayer && carType ? CAR_TYPES[carType] : null;
+        if (carConfig) {
+            this.maxSpeed = carConfig.maxSpeed;
+            this.acceleration = carConfig.acceleration;
+            this.turnSpeed = carConfig.turnSpeed;
+            this.weight = carConfig.weight;
+            this.carType = carType;
+            this.carEmoji = carConfig.emoji;
+        } else {
+            this.maxSpeed = isPlayer ? 12 : 9 + Math.random() * 2;
+            this.acceleration = 0.3;
+            this.turnSpeed = 0.08;
+            this.weight = 1.0;
+            this.carType = null;
+            this.carEmoji = '🏎️';
+        }
+        
         this.friction = 0.98;
-        this.turnSpeed = 0.08;
-        this.color = color;
+        this.color = carConfig ? carConfig.color : color;
         this.isPlayer = isPlayer;
         this.character = character;
+        this.displayName = isPlayer ? (playerConfig.name || '玩家') : character;
         this.lap = 1;
         this.checkpoint = 0;
         this.finished = false;
@@ -606,12 +638,21 @@ class Kart {
             ctx.stroke();
         }
         
-        // 角色名称
+        // 车辆类型表情（玩家）
+        if (this.isPlayer && this.carEmoji) {
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.carEmoji, 0, -18);
+        }
+        
         ctx.restore();
+        
+        // 角色名称（使用displayName显示玩家自定义名字）
         ctx.fillStyle = 'white';
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(this.character, this.x, this.y - 25);
+        ctx.fillText(this.displayName, this.x, this.y - 25);
         
         // 排名
         if (this.rank <= 3) {
@@ -685,16 +726,18 @@ function initGame() {
     
     for (let i = 0; i < GAME_CONFIG.PLAYER_COUNT; i++) {
         const pos = startPositions[i];
+        const isPlayer = characters[i].isPlayer;
         const kart = new Kart(
             i,
             pos.x,
             pos.y,
             characters[i].color,
-            characters[i].isPlayer,
-            characters[i].name
+            isPlayer,
+            characters[i].name,
+            isPlayer ? playerConfig.carType : null
         );
         karts.push(kart);
-        if (characters[i].isPlayer) player = kart;
+        if (isPlayer) player = kart;
     }
     
     gameTime = 0;
@@ -1415,6 +1458,55 @@ function restartAIRace() {
 
 // 游戏循环中添加玩家输入处理
 setInterval(handlePlayerInput, 1000 / 60);
+
+// 角色选择界面
+function showCharacterSelect() {
+    gameState = 'characterSelect';
+    document.getElementById('modeSelectScreen').style.display = 'none';
+    document.getElementById('characterSelectScreen').style.display = 'flex';
+    document.getElementById('characterSelectScreen').classList.remove('hidden');
+    
+    // 重置选择
+    playerConfig.name = '玩家';
+    playerConfig.carType = 'standard';
+    document.getElementById('playerNameInput').value = '';
+    updateCarSelectionUI();
+}
+
+// 选择车辆类型
+function selectCar(carType) {
+    playerConfig.carType = carType;
+    updateCarSelectionUI();
+}
+
+// 更新车辆选择UI
+function updateCarSelectionUI() {
+    const options = document.querySelectorAll('.car-option');
+    options.forEach(opt => {
+        const type = opt.getAttribute('data-car');
+        if (type === playerConfig.carType) {
+            opt.style.borderColor = '#ffd700';
+            opt.style.background = 'rgba(255,215,0,0.3)';
+            opt.style.transform = 'scale(1.05)';
+        } else {
+            opt.style.borderColor = '#666';
+            opt.style.background = 'rgba(0,0,0,0.3)';
+            opt.style.transform = 'scale(1)';
+        }
+    });
+}
+
+// 确认角色选择并开始游戏
+function confirmCharacterSelect() {
+    const nameInput = document.getElementById('playerNameInput').value.trim();
+    if (nameInput) {
+        playerConfig.name = nameInput;
+    }
+    
+    document.getElementById('characterSelectScreen').style.display = 'none';
+    gameMode = 'player';
+    initGame();
+}
 
 // 启动游戏
 showModeSelect();
