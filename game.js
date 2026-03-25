@@ -70,6 +70,7 @@ class Kart {
         this.finished = false;
         this.boostTime = 0;
         this.isDrifting = false;
+        this.shrunk = false;
         this.aiTargetPoint = 0;
         this.aiSkill = Math.random() * 0.3 + 0.7;
     }
@@ -289,6 +290,9 @@ if (joystickBase && joystick) {
         keys.left = false;
         keys.right = false;
     });
+    
+    // 防止触摸时页面滚动
+    joystickBase.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 }
 
 function updateJoystick(clientX, clientY) {
@@ -334,6 +338,46 @@ setupButton(gasButton, 'up');
 setupButton(brakeButton, 'down');
 setupButton(itemButton, 'space');
 setupButton(driftButton, 'shift');
+
+// 响应式画布缩放
+let canvasScale = 1;
+let canvasOffsetX = 0;
+let canvasOffsetY = 0;
+
+function resizeCanvas() {
+    const container = document.getElementById('gameContainer');
+    const canvas = document.getElementById('gameCanvas');
+    
+    if (!container || !canvas) return;
+    
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    // 计算缩放比例，保持宽高比
+    const scaleX = containerWidth / GAME_CONFIG.CANVAS_WIDTH;
+    const scaleY = containerHeight / GAME_CONFIG.CANVAS_HEIGHT;
+    canvasScale = Math.min(scaleX, scaleY);
+    
+    // 计算居中偏移
+    canvasOffsetX = (containerWidth - GAME_CONFIG.CANVAS_WIDTH * canvasScale) / 2;
+    canvasOffsetY = (containerHeight - GAME_CONFIG.CANVAS_HEIGHT * canvasScale) / 2;
+    
+    // 设置画布实际显示大小
+    canvas.style.width = (GAME_CONFIG.CANVAS_WIDTH * canvasScale) + 'px';
+    canvas.style.height = (GAME_CONFIG.CANVAS_HEIGHT * canvasScale) + 'px';
+    canvas.style.marginLeft = canvasOffsetX + 'px';
+    canvas.style.marginTop = canvasOffsetY + 'px';
+}
+
+// 坐标转换函数：屏幕坐标 -> 画布坐标
+function screenToCanvas(screenX, screenY) {
+    const canvas = document.getElementById('gameCanvas');
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (screenX - rect.left) / canvasScale,
+        y: (screenY - rect.top) / canvasScale
+    };
+}
 
 // 游戏主循环
 function gameLoop() {
@@ -451,6 +495,14 @@ function drawKart(kart) {
 }
 
 // 初始化
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => {
+    setTimeout(resizeCanvas, 100);
+});
+
+// 初始调整大小
+resizeCanvas();
+
 document.getElementById('startScreen').classList.remove('hidden');
 document.getElementById('modeSelectScreen').classList.add('hidden');
 
