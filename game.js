@@ -23,6 +23,7 @@ let particles = [];
 let items = [];
 let projectiles = [];
 let aiRaceResults = []; // AI竞速赛结果
+let countdownValue = 3; // 倒计时当前值
 
 // 输入状态
 const keys = {
@@ -211,6 +212,14 @@ class Kart {
     
     aiControl() {
         this.aiTimer++;
+        
+        // 倒计时期间不移动（防止抢跑）
+        if (gameState === 'countdown') {
+            this.vx = 0;
+            this.vy = 0;
+            this.speed = 0;
+            return;
+        }
         
         // 获取目标点
         const target = TRACK_POINTS[this.targetPoint];
@@ -689,13 +698,13 @@ function initGame() {
     }
     
     gameTime = 0;
+    countdownValue = 3;
     gameState = 'countdown';
     
-    // 倒计时
-    let count = 3;
+    // 倒计时 - 3, 2, 1, GO!
     const countdownInterval = setInterval(() => {
-        count--;
-        if (count <= 0) {
+        countdownValue--;
+        if (countdownValue < 0) {
             clearInterval(countdownInterval);
             gameState = 'racing';
             // 初始化所有赛车的单圈计时
@@ -715,6 +724,17 @@ function update() {
     // 更新车辆
     for (let kart of karts) {
         kart.update();
+    }
+    
+    // 倒计时期间禁止移动
+    if (gameState === 'countdown') {
+        // 重置所有车辆速度为0，防止抢跑
+        for (let kart of karts) {
+            kart.vx = 0;
+            kart.vy = 0;
+            kart.speed = 0;
+        }
+        return;
     }
     
     // 更新粒子
@@ -1006,7 +1026,7 @@ function drawUI() {
         itemBox.style.borderColor = '#666';
     }
     
-    // 倒计时
+    // 倒计时 - 使用独立的倒计时变量
     if (gameState === 'countdown') {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1015,9 +1035,15 @@ function drawUI() {
         ctx.font = 'bold 120px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const count = Math.ceil((4000 - (Date.now() - gameTime * 16)) / 1000);
-        const text = count > 0 ? count : 'GO!';
+        
+        // 显示倒计时数字
+        const text = countdownValue > 0 ? countdownValue : 'GO!';
         ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        
+        // 显示提示文字
+        ctx.font = 'bold 24px Arial';
+        ctx.fillStyle = '#fff';
+        ctx.fillText('准备出发！', canvas.width / 2, canvas.height / 2 + 100);
     }
     
     // 游戏结束画面
@@ -1135,6 +1161,14 @@ function gameLoop() {
 // 玩家输入处理
 function handlePlayerInput() {
     if (!player || gameState !== 'racing') return;
+    
+    // 倒计时期间禁止移动（防止抢跑）
+    if (gameState === 'countdown') {
+        player.vx = 0;
+        player.vy = 0;
+        player.speed = 0;
+        return;
+    }
     
     // 加速/减速 - 使用绝对方向
     if (keys.up) {
