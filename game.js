@@ -15,6 +15,59 @@ const GAME_CONFIG = {
     OFF_ROAD_FRICTION: 0.92
 };
 
+// 响应式画布设置
+let scaleRatio = 1;
+let canvasOffsetX = 0;
+let canvasOffsetY = 0;
+
+function resizeCanvas() {
+    const container = document.getElementById('gameContainer');
+    const isMobile = window.innerWidth <= 768;
+    
+    if (isMobile) {
+        // 移动端：填满屏幕
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        
+        // 计算缩放比例，保持宽高比
+        const scaleX = screenWidth / GAME_CONFIG.CANVAS_WIDTH;
+        const scaleY = screenHeight / GAME_CONFIG.CANVAS_HEIGHT;
+        scaleRatio = Math.min(scaleX, scaleY);
+        
+        // 设置画布实际显示大小
+        canvas.style.width = (GAME_CONFIG.CANVAS_WIDTH * scaleRatio) + 'px';
+        canvas.style.height = (GAME_CONFIG.CANVAS_HEIGHT * scaleRatio) + 'px';
+        
+        // 居中显示
+        canvasOffsetX = (screenWidth - GAME_CONFIG.CANVAS_WIDTH * scaleRatio) / 2;
+        canvasOffsetY = (screenHeight - GAME_CONFIG.CANVAS_HEIGHT * scaleRatio) / 2;
+        canvas.style.marginLeft = canvasOffsetX + 'px';
+        canvas.style.marginTop = canvasOffsetY + 'px';
+    } else {
+        // 桌面端：固定大小
+        scaleRatio = 1;
+        canvasOffsetX = 0;
+        canvasOffsetY = 0;
+        canvas.style.width = GAME_CONFIG.CANVAS_WIDTH + 'px';
+        canvas.style.height = GAME_CONFIG.CANVAS_HEIGHT + 'px';
+        canvas.style.marginLeft = '0';
+        canvas.style.marginTop = '0';
+    }
+}
+
+// 坐标转换函数：屏幕坐标转画布坐标
+function screenToCanvas(screenX, screenY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (screenX - rect.left) / scaleRatio,
+        y: (screenY - rect.top) / scaleRatio
+    };
+}
+
+// 初始化时和窗口大小改变时调整画布
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
 // 游戏状态
 let gameState = 'start'; // start, modeSelect, countdown, racing, finished
 let gameMode = 'player'; // player, aiRace
@@ -1323,42 +1376,46 @@ let joystickActive = false;
 let joystickCenter = { x: 0, y: 0 };
 let joystickCurrent = { x: 0, y: 0 };
 
+const joystickBase = document.getElementById('joystickBase');
 const joystick = document.getElementById('joystick');
-const joystickKnob = document.getElementById('joystickKnob');
+const gasButton = document.getElementById('gasButton');
+const brakeButton = document.getElementById('brakeButton');
+const itemButton = document.getElementById('itemButton');
+const driftButton = document.getElementById('driftButton');
 
-if (joystick) {
-    joystick.addEventListener('touchstart', (e) => {
+// 虚拟摇杆控制
+if (joystickBase && joystick) {
+    joystickBase.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
-        const rect = joystick.getBoundingClientRect();
+        const rect = joystickBase.getBoundingClientRect();
         joystickCenter = {
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2
         };
         joystickActive = true;
         updateJoystick(touch);
-    });
+    }, { passive: false });
     
-    joystick.addEventListener('touchmove', (e) => {
+    joystickBase.addEventListener('touchmove', (e) => {
         e.preventDefault();
         if (joystickActive) {
             updateJoystick(e.touches[0]);
         }
-    });
+    }, { passive: false });
     
-    joystick.addEventListener('touchend', (e) => {
+    joystickBase.addEventListener('touchend', (e) => {
         e.preventDefault();
         joystickActive = false;
-        joystickKnob.style.transform = 'translate(0px, 0px)';
-        keys.up = false;
-        keys.down = false;
+        joystick.style.transform = 'translate(-50%, -50%)';
+        joystick.classList.remove('active');
         keys.left = false;
         keys.right = false;
-    });
+    }, { passive: false });
 }
 
 function updateJoystick(touch) {
-    const maxDist = 40;
+    const maxDist = 35;
     const dx = touch.clientX - joystickCenter.x;
     const dy = touch.clientY - joystickCenter.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1368,44 +1425,69 @@ function updateJoystick(touch) {
     const knobX = Math.cos(angle) * clampedDist;
     const knobY = Math.sin(angle) * clampedDist;
     
-    joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+    joystick.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+    joystick.classList.add('active');
     
-    // 设置方向键状态
-    const threshold = 10;
-    keys.up = dy < -threshold;
-    keys.down = dy > threshold;
+    // 设置方向键状态 - 只控制左右转向
+    const threshold = 5;
     keys.left = dx < -threshold;
     keys.right = dx > threshold;
 }
 
-// 动作按钮
-const btnItem = document.getElementById('btnItem');
-const btnDrift = document.getElementById('btnDrift');
-
-if (btnItem) {
-    btnItem.addEventListener('touchstart', (e) => {
+// 油门按钮
+if (gasButton) {
+    gasButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        keys.space = true;
-        btnItem.classList.add('active');
-    });
-    btnItem.addEventListener('touchend', (e) => {
+        keys.up = true;
+        gasButton.classList.add('active');
+    }, { passive: false });
+    gasButton.addEventListener('touchend', (e) => {
         e.preventDefault();
-        keys.space = false;
-        btnItem.classList.remove('active');
-    });
+        keys.up = false;
+        gasButton.classList.remove('active');
+    }, { passive: false });
 }
 
-if (btnDrift) {
-    btnDrift.addEventListener('touchstart', (e) => {
+// 刹车按钮
+if (brakeButton) {
+    brakeButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.down = true;
+        brakeButton.classList.add('active');
+    }, { passive: false });
+    brakeButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.down = false;
+        brakeButton.classList.remove('active');
+    }, { passive: false });
+}
+
+// 道具按钮
+if (itemButton) {
+    itemButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.space = true;
+        itemButton.classList.add('active');
+    }, { passive: false });
+    itemButton.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.space = false;
+        itemButton.classList.remove('active');
+    }, { passive: false });
+}
+
+// 漂移按钮
+if (driftButton) {
+    driftButton.addEventListener('touchstart', (e) => {
         e.preventDefault();
         keys.shift = true;
-        btnDrift.classList.add('active');
-    });
-    btnDrift.addEventListener('touchend', (e) => {
+        driftButton.classList.add('active');
+    }, { passive: false });
+    driftButton.addEventListener('touchend', (e) => {
         e.preventDefault();
         keys.shift = false;
-        btnDrift.classList.remove('active');
-    });
+        driftButton.classList.remove('active');
+    }, { passive: false });
 }
 
 // 模式选择
