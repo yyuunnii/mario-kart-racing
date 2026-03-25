@@ -16,11 +16,13 @@ const GAME_CONFIG = {
 };
 
 // 游戏状态
-let gameState = 'start'; // start, countdown, racing, finished
+let gameState = 'start'; // start, modeSelect, countdown, racing, finished
+let gameMode = 'player'; // player, aiRace
 let gameTime = 0;
 let particles = [];
 let items = [];
 let projectiles = [];
+let aiRaceResults = []; // AI竞速赛结果
 
 // 输入状态
 const keys = {
@@ -97,522 +99,751 @@ class Kart {
         this.finishTime = 0;
         this.rank = 1;
         
+        // 单圈计时
+        this.lapTimes = [];
+        this.currentLapStartTime = 0;
+        this.bestLapTime = Infinity;
+        
         // 道具
         this.item = null;
-        this.itemCount = 0;
-        
-        // 状态
-        this.drifting = false;
-        this.invincible = false;
+        this.itemCooldown = 0;
         this.invincibleTime = 0;
         this.shrunk = false;
         this.shrinkTime = 0;
-        this.stunned = false;
-        this.stunTime = 0;
+        
+        // 漂移
+        this.driftTime = 0;
+        this.isDrifting = false;
+        this.boostTime = 0;
+        
+        // 表情
+        this.expression = 'normal';
+        this.expressionTime = 0;
         
         // AI
-        this.aiOffset = (Math.random() - 0.5) * 40;
-        this.aiReaction = Math.random() * 0.5 + 0.5;
+        this.aiSkill = Math.random() * 0.3 + 0.7; // 0.7-1.0
+        this.aiOffset = (Math.random() - 0.5) * 40; // 赛道偏移
+        this.aiReactionTime = Math.random() * 10 + 5;
+        this.aiTimer = 0;
+        this.targetPoint = 0;
     }
     
     update() {
         if (this.finished) return;
         
-        // 处理眩晕
-        if (this.stunned) {
-            this.stunTime--;
-            if (this.stunTime <= 0) {
-                this.stunned = false;
-            }
-            this.vx *= 0.9;
-            this.vy *= 0.9;
-            this.x += this.vx;
-            this.y += this.vy;
-            return;
+        // 更新计时
+        if (this.currentLapStartTime === 0 && gameState === 'racing') {
+            this.currentLapStartTime = Date.now();
         }
         
-        // 处理无敌时间
-        if (this.invincible) {
+        // 道具冷却
+        if (this.itemCooldown > 0) this.itemCooldown--;
+        
+        // 无敌时间
+        if (this.invincibleTime > 0) {
             this.invincibleTime--;
             if (this.invincibleTime <= 0) {
-                this.invincible = false;
+                this.maxSpeed = this.isPlayer ? 12 : 9 + Math.random() * 2;
             }
         }
         
-        // 处理缩小
-        if (this.shrunk) {
+        // 缩小时间
+        if (this.shrinkTime > 0) {
             this.shrinkTime--;
             if (this.shrinkTime <= 0) {
                 this.shrunk = false;
+                this.maxSpeed *= 2;
             }
         }
         
-        if (this.isPlayer) {
-            this.handlePlayerInput();
+        // 漂移
+        if (this.isDrifting) {
+            this.driftTime++;
+            if (this.driftTime > 30) {
+                this.boostTime = 60; // 漂移加速
+            }
         } else {
-            this.handleAI();
+            this.driftTime = 0;
+        }
+        
+        // 漂移加速
+        if (this.boostTime > 0) {
+            this.boostTime--;
+        }
+        
+        // 表情
+        if (this.expressionTime > 0) {
+            this.expressionTime--;
+            if (this.expressionTime <= 0) {
+                this.expression = 'normal';
+            }
         }
         
         // 应用摩擦力
-        const onTrack = this.isOnTrack();
-        const friction = onTrack ? this.friction : GAME_CONFIG.OFF_ROAD_FRICTION;
-        this.vx *= friction;
-        this.vy *= friction;
+        this.vx *= this.friction;
+        this.vy *= this.friction;
+        this.speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
         
         // 更新位置
         this.x += this.vx;
         this.y += this.vy;
         
-        // 计算速度
-        this.speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        
-        // 更新角度（根据速度方向）
-        if (this.speed > 0.5) {
-            const targetAngle = Math.atan2(this.vy, this.vx);
-            let diff = targetAngle - this.angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            this.angle += diff * 0.1;
-        }
-        
-        // 边界检查
-        this.checkBoundaries();
-        
-        // 检查检查点
-        this.checkCheckpoints();
+        // 检查是否在赛道上
+        this.checkTrackPosition();
         
         // 检查道具箱
         this.checkItemBoxes();
         
-        // 漂移效果
-        if (this.drifting && this.speed > 5) {
-            this.createDriftParticles();
+        // 检查障碍物
+        this.checkObstacles();
+        
+        // 检查检查点
+        this.checkCheckpoints();
+        
+        // AI控制
+        if (!this.isPlayer && gameMode === 'player') {
+            this.aiControl();
         }
+        
+        // 边界检查
+        this.checkBoundaries();
     }
     
-    handlePlayerInput() {
-        let accelerating = false;
-        let turning = false;
+    aiControl() {
+        this.aiTimer++;
         
-        // 使用绝对方向控制（WASD控制屏幕方向，不是赛车朝向）
-        let ax = 0;
-        let ay = 0;
+        // 获取目标点
+        const target = TRACK_POINTS[this.targetPoint];
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
         
-        // W/S 控制上下方向（屏幕坐标系）
-        if (keys.up) {
-            ay -= this.acceleration;
-            accelerating = true;
-        }
-        if (keys.down) {
-            ay += this.acceleration * 0.5;
-        }
+        // 计算目标角度
+        let targetAngle = Math.atan2(dy, dx);
         
-        // A/D 控制左右方向（屏幕坐标系）
-        if (keys.left) {
-            ax -= this.acceleration;
-            turning = true;
-        }
-        if (keys.right) {
-            ax += this.acceleration;
-            turning = true;
-        }
+        // 添加赛道偏移
+        const perpAngle = targetAngle + Math.PI / 2;
+        const offsetX = Math.cos(perpAngle) * this.aiOffset;
+        const offsetY = Math.sin(perpAngle) * this.aiOffset;
+        const adjustedTargetX = target.x + offsetX;
+        const adjustedTargetY = target.y + offsetY;
         
-        // 应用加速度到速度
-        this.vx += ax;
-        this.vy += ay;
-        
-        // 根据速度方向更新赛车朝向（用于渲染）
-        if (this.speed > 0.5 || Math.abs(ax) > 0 || Math.abs(ay) > 0) {
-            const targetAngle = Math.atan2(this.vy, this.vx);
-            let diff = targetAngle - this.angle;
-            while (diff > Math.PI) diff -= Math.PI * 2;
-            while (diff < -Math.PI) diff += Math.PI * 2;
-            this.angle += diff * 0.15;
-        }
-        
-        // 漂移状态
-        this.drifting = keys.shift && turning && this.speed > 5;
-        
-        // 使用道具
-        if (keys.space && this.item) {
-            this.useItem();
-        }
-    }
-    
-    handleAI() {
-        // 找到最近的赛道点
-        let nearestPoint = 0;
-        let minDist = Infinity;
-        
-        for (let i = 0; i < TRACK_POINTS.length; i++) {
-            const dist = Math.hypot(TRACK_POINTS[i].x - this.x, TRACK_POINTS[i].y - this.y);
-            if (dist < minDist) {
-                minDist = dist;
-                nearestPoint = i;
-            }
-        }
-        
-        // 目标点是前方的一个点
-        const targetIndex = (nearestPoint + 2) % TRACK_POINTS.length;
-        const target = TRACK_POINTS[targetIndex];
-        
-        // 计算到目标的角度
-        const targetAngle = Math.atan2(target.y - this.y + this.aiOffset, target.x - this.x + this.aiOffset);
+        const adjustedDx = adjustedTargetX - this.x;
+        const adjustedDy = adjustedTargetY - this.y;
+        targetAngle = Math.atan2(adjustedDy, adjustedDx);
         
         // 平滑转向
-        let diff = targetAngle - this.angle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        this.angle += diff * 0.05 * this.aiReaction;
+        let angleDiff = targetAngle - this.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        
+        const turnAmount = Math.max(-this.turnSpeed, Math.min(this.turnSpeed, angleDiff));
+        this.angle += turnAmount * this.aiSkill;
         
         // 加速
-        const speedMultiplier = this.isOnTrack() ? 1 : 0.7;
-        this.vx += Math.cos(this.angle) * this.acceleration * speedMultiplier;
-        this.vy += Math.sin(this.angle) * this.acceleration * speedMultiplier;
+        const boostMultiplier = this.boostTime > 0 ? 1.5 : 1;
+        const actualMaxSpeed = this.maxSpeed * this.aiSkill * boostMultiplier;
         
-        // 随机漂移
-        this.drifting = Math.random() < 0.1 && this.speed > 6;
+        if (this.speed < actualMaxSpeed) {
+            this.vx += Math.cos(this.angle) * this.acceleration * this.aiSkill;
+            this.vy += Math.sin(this.angle) * this.acceleration * this.aiSkill;
+        }
+        
+        // 到达目标点后转向下一个
+        if (dist < 60) {
+            this.targetPoint = (this.targetPoint + 1) % TRACK_POINTS.length;
+        }
         
         // AI使用道具
-        if (this.item && Math.random() < 0.02) {
+        if (this.item && Math.random() < 0.02 * this.aiSkill) {
             this.useItem();
         }
+    }
+    
+    checkTrackPosition() {
+        // 找到最近的赛道点
+        let minDist = Infinity;
+        let onTrack = false;
+        
+        for (let i = 0; i < TRACK_POINTS.length; i++) {
+            const p1 = TRACK_POINTS[i];
+            const p2 = TRACK_POINTS[(i + 1) % TRACK_POINTS.length];
+            
+            const dist = this.distanceToSegment(this.x, this.y, p1.x, p1.y, p2.x, p2.y);
+            if (dist < minDist) minDist = dist;
+        }
+        
+        // 如果在赛道外，应用更大的摩擦力
+        if (minDist > GAME_CONFIG.TRACK_WIDTH / 2) {
+            this.vx *= GAME_CONFIG.OFF_ROAD_FRICTION;
+            this.vy *= GAME_CONFIG.OFF_ROAD_FRICTION;
+            this.maxSpeed = this.isPlayer ? 8 : 7 * this.aiSkill;
+        } else {
+            this.maxSpeed = this.isPlayer ? 12 : 9 + Math.random() * 2;
+        }
+    }
+    
+    distanceToSegment(px, py, x1, y1, x2, y2) {
+        const A = px - x1;
+        const B = py - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = -1;
+        
+        if (lenSq !== 0) param = dot / lenSq;
+        
+        let xx, yy;
+        if (param < 0) {
+            xx = x1;
+            yy = y1;
+        } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+        
+        const dx = px - xx;
+        const dy = py - yy;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    checkItemBoxes() {
+        for (let box of ITEM_BOXES) {
+            if (box.active) {
+                const dist = Math.sqrt((this.x - box.x) ** 2 + (this.y - box.y) ** 2);
+                if (dist < 30 && !this.item && this.itemCooldown === 0) {
+                    this.getRandomItem();
+                    box.active = false;
+                    setTimeout(() => box.active = true, 3000);
+                    
+                    // 特效
+                    for (let i = 0; i < 10; i++) {
+                        particles.push(new Particle(box.x, box.y, '#ffd700'));
+                    }
+                }
+            }
+        }
+    }
+    
+    getRandomItem() {
+        const items = Object.keys(ITEM_TYPES);
+        const randomItem = items[Math.floor(Math.random() * items.length)];
+        this.item = randomItem;
+        this.expression = 'happy';
+        this.expressionTime = 60;
     }
     
     useItem() {
         if (!this.item) return;
         
-        const itemType = this.item.effect;
+        const itemType = ITEM_TYPES[this.item];
         
-        switch (itemType) {
+        switch (itemType.effect) {
             case 'speed_boost':
-                this.vx *= 2;
-                this.vy *= 2;
-                createParticles(this.x, this.y, 'speed', 20);
+                this.boostTime = 120;
+                this.expression = 'excited';
+                this.expressionTime = 60;
                 break;
-                
             case 'banana_trap':
-                // 在身后放置香蕉皮
                 items.push({
-                    x: this.x - Math.cos(this.angle) * 40,
-                    y: this.y - Math.sin(this.angle) * 40,
                     type: 'banana',
-                    emoji: '🍌',
-                    owner: this.id
+                    x: this.x - Math.cos(this.angle) * 30,
+                    y: this.y - Math.sin(this.angle) * 30,
+                    life: 600
                 });
                 break;
-                
             case 'shell_attack':
-                // 发射龟壳
-                projectiles.push({
-                    x: this.x,
-                    y: this.y,
-                    vx: Math.cos(this.angle) * 15,
-                    vy: Math.sin(this.angle) * 15,
-                    type: 'shell',
-                    emoji: '🐢',
-                    owner: this.id,
-                    bounces: 3
-                });
+                const target = this.findTarget();
+                if (target) {
+                    projectiles.push({
+                        type: 'shell',
+                        x: this.x,
+                        y: this.y,
+                        target: target,
+                        speed: 15
+                    });
+                }
                 break;
-                
             case 'invincible':
-                this.invincible = true;
                 this.invincibleTime = 300;
-                this.maxSpeed *= 1.5;
+                this.maxSpeed *= 1.3;
+                this.expression = 'star';
+                this.expressionTime = 300;
                 break;
-                
             case 'shrink_others':
-                // 缩小其他赛车
-                karts.forEach(kart => {
-                    if (kart.id !== this.id) {
+                for (let kart of karts) {
+                    if (kart !== this && !kart.finished) {
                         kart.shrunk = true;
                         kart.shrinkTime = 180;
+                        kart.maxSpeed *= 0.5;
                     }
-                });
+                }
                 break;
         }
         
         this.item = null;
-        updateUI();
+        this.itemCooldown = 30;
     }
     
-    isOnTrack() {
-        // 检查是否在赛道上
-        let onTrack = false;
-        const trackWidth = GAME_CONFIG.TRACK_WIDTH / 2;
+    findTarget() {
+        // 找到前方最近的对手
+        let target = null;
+        let minDist = Infinity;
         
-        // 检查到赛道中心线的距离
-        for (let i = 0; i < TRACK_POINTS.length; i++) {
-            const p1 = TRACK_POINTS[i];
-            const p2 = TRACK_POINTS[(i + 1) % TRACK_POINTS.length];
-            
-            const dist = pointToLineDistance(this.x, this.y, p1.x, p1.y, p2.x, p2.y);
-            if (dist < trackWidth) {
-                onTrack = true;
-                break;
-            }
-        }
-        
-        return onTrack;
-    }
-    
-    checkBoundaries() {
-        // 墙壁碰撞
-        if (this.x < 20) {
-            this.x = 20;
-            this.vx *= -GAME_CONFIG.WALL_BOUNCE;
-        }
-        if (this.x > canvas.width - 20) {
-            this.x = canvas.width - 20;
-            this.vx *= -GAME_CONFIG.WALL_BOUNCE;
-        }
-        if (this.y < 20) {
-            this.y = 20;
-            this.vy *= -GAME_CONFIG.WALL_BOUNCE;
-        }
-        if (this.y > canvas.height - 20) {
-            this.y = canvas.height - 20;
-            this.vy *= -GAME_CONFIG.WALL_BOUNCE;
-        }
-        
-        // 障碍物碰撞
-        OBSTACLES.forEach(obs => {
-            const dist = Math.hypot(this.x - obs.x, this.y - obs.y);
-            const minDist = obs.radius + 15;
-            
-            if (dist < minDist) {
-                const angle = Math.atan2(this.y - obs.y, this.x - obs.x);
-                this.x = obs.x + Math.cos(angle) * minDist;
-                this.y = obs.y + Math.sin(angle) * minDist;
-                this.vx *= 0.5;
-                this.vy *= 0.5;
-                
-                if (this.isPlayer) {
-                    createParticles(this.x, this.y, 'collision', 10);
+        for (let kart of karts) {
+            if (kart !== this && !kart.finished) {
+                const dist = Math.sqrt((kart.x - this.x) ** 2 + (kart.y - this.y) ** 2);
+                if (dist < minDist && dist < 300) {
+                    minDist = dist;
+                    target = kart;
                 }
             }
-        });
+        }
+        
+        return target;
+    }
+    
+    checkObstacles() {
+        for (let obstacle of OBSTACLES) {
+            const dist = Math.sqrt((this.x - obstacle.x) ** 2 + (this.y - obstacle.y) ** 2);
+            if (dist < obstacle.radius + 15) {
+                // 碰撞反弹
+                const angle = Math.atan2(this.y - obstacle.y, this.x - obstacle.x);
+                this.vx = Math.cos(angle) * this.speed * GAME_CONFIG.WALL_BOUNCE;
+                this.vy = Math.sin(angle) * this.speed * GAME_CONFIG.WALL_BOUNCE;
+                this.speed *= 0.5;
+                
+                this.expression = 'hurt';
+                this.expressionTime = 30;
+                
+                // 特效
+                for (let i = 0; i < 5; i++) {
+                    particles.push(new Particle(this.x, this.y, '#888'));
+                }
+            }
+        }
+        
+        // 检查道具
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            const dist = Math.sqrt((this.x - item.x) ** 2 + (this.y - item.y) ** 2);
+            if (dist < 20) {
+                this.spinOut();
+                items.splice(i, 1);
+            }
+        }
+    }
+    
+    spinOut() {
+        this.speed *= 0.3;
+        this.vx *= 0.3;
+        this.vy *= 0.3;
+        this.expression = 'dizzy';
+        this.expressionTime = 60;
+        
+        for (let i = 0; i < 8; i++) {
+            particles.push(new Particle(this.x, this.y, '#ff6b6b'));
+        }
     }
     
     checkCheckpoints() {
         // 检查是否通过检查点
-        const checkpoint = TRACK_POINTS[this.checkpoint];
-        const dist = Math.hypot(this.x - checkpoint.x, this.y - checkpoint.y);
-        
-        if (dist < 50) {
-            this.checkpoint = (this.checkpoint + 1) % TRACK_POINTS.length;
+        for (let i = 0; i < TRACK_POINTS.length; i++) {
+            const point = TRACK_POINTS[i];
+            const dist = Math.sqrt((this.x - point.x) ** 2 + (this.y - point.y) ** 2);
             
-            // 完成一圈
-            if (this.checkpoint === 0) {
-                this.lap++;
-                if (this.lap > GAME_CONFIG.TOTAL_LAPS) {
-                    this.finished = true;
-                    this.finishTime = gameTime;
-                }
-                
-                if (this.isPlayer) {
-                    updateUI();
+            if (dist < 50) {
+                if (i === (this.checkpoint + 1) % TRACK_POINTS.length) {
+                    this.checkpoint = i;
+                    
+                    // 完成一圈
+                    if (this.checkpoint === 0 && this.speed > 1) {
+                        // 记录单圈时间
+                        if (this.currentLapStartTime > 0) {
+                            const lapTime = (Date.now() - this.currentLapStartTime) / 1000;
+                            this.lapTimes.push(lapTime);
+                            if (lapTime < this.bestLapTime) {
+                                this.bestLapTime = lapTime;
+                            }
+                        }
+                        
+                        this.lap++;
+                        this.currentLapStartTime = Date.now();
+                        
+                        if (this.lap > GAME_CONFIG.TOTAL_LAPS) {
+                            this.finished = true;
+                            this.finishTime = Date.now();
+                        }
+                    }
                 }
             }
         }
     }
     
-    checkItemBoxes() {
-        ITEM_BOXES.forEach((box, index) => {
-            if (!box.active) return;
-            
-            const dist = Math.hypot(this.x - box.x, this.y - box.y);
-            if (dist < 30) {
-                // 获得随机道具
-                const itemKeys = Object.keys(ITEM_TYPES);
-                const randomItem = ITEM_TYPES[itemKeys[Math.floor(Math.random() * itemKeys.length)]];
-                this.item = randomItem;
-                
-                // 暂时禁用道具箱
-                box.active = false;
-                setTimeout(() => { box.active = true; }, 3000);
-                
-                createParticles(box.x, box.y, 'item', 15);
-                
-                if (this.isPlayer) {
-                    updateUI();
-                }
-            }
-        });
-    }
-    
-    createDriftParticles() {
-        if (Math.random() < 0.3) {
-            const offset = (Math.random() - 0.5) * 20;
-            const px = this.x - Math.cos(this.angle) * 20 + Math.cos(this.angle + Math.PI/2) * offset;
-            const py = this.y - Math.sin(this.angle) * 20 + Math.sin(this.angle + Math.PI/2) * offset;
-            particles.push({
-                x: px,
-                y: py,
-                vx: (Math.random() - 0.5) * 2,
-                vy: (Math.random() - 0.5) * 2,
-                life: 30,
-                color: `hsl(${Math.random() * 60 + 10}, 100%, 50%)`,
-                size: Math.random() * 5 + 3
-            });
-        }
+    checkBoundaries() {
+        if (this.x < 0) { this.x = 0; this.vx *= -0.5; }
+        if (this.x > canvas.width) { this.x = canvas.width; this.vx *= -0.5; }
+        if (this.y < 0) { this.y = 0; this.vy *= -0.5; }
+        if (this.y > canvas.height) { this.y = canvas.height; this.vy *= -0.5; }
     }
     
     draw() {
         ctx.save();
         ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
         
-        // 无敌效果闪烁
-        if (this.invincible && Math.floor(gameTime / 5) % 2 === 0) {
-            ctx.globalAlpha = 0.5;
-        }
-        
-        // 缩小效果
+        // 缩放（缩小效果）
         const scale = this.shrunk ? 0.6 : 1;
         ctx.scale(scale, scale);
         
-        // 旋转
-        ctx.rotate(this.angle);
-        
-        // 绘制阴影
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        // 阴影
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
-        ctx.ellipse(5, 5, 22, 15, 0, 0, Math.PI * 2);
+        ctx.ellipse(5, 5, 18, 12, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // 绘制赛车车身
+        // 车身
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-15, -10, 30, 20);
+        
+        // 车顶
         ctx.fillStyle = this.color;
         ctx.beginPath();
-        ctx.roundRect(-20, -12, 40, 24, 8);
+        ctx.arc(0, 0, 12, 0, Math.PI * 2);
         ctx.fill();
         
-        // 赛车边框
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 2;
+        // 角色表情
+        ctx.fillStyle = '#ffccaa';
+        ctx.beginPath();
+        ctx.arc(5, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 眼睛
+        ctx.fillStyle = 'black';
+        ctx.beginPath();
+        ctx.arc(7, -2, 2, 0, Math.PI * 2);
+        ctx.arc(7, 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 表情
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        switch (this.expression) {
+            case 'happy':
+                ctx.arc(8, 0, 3, 0, Math.PI);
+                break;
+            case 'excited':
+                ctx.arc(8, 0, 4, 0, Math.PI);
+                break;
+            case 'hurt':
+            case 'dizzy':
+                ctx.moveTo(6, -1); ctx.lineTo(8, 1);
+                ctx.moveTo(8, -1); ctx.lineTo(6, 1);
+                ctx.moveTo(6, 3); ctx.lineTo(8, 5);
+                ctx.moveTo(8, 3); ctx.lineTo(6, 5);
+                break;
+            case 'star':
+                ctx.fillStyle = '#ffd700';
+                ctx.beginPath();
+                ctx.arc(8, 0, 4, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            default:
+                ctx.moveTo(6, 2); ctx.lineTo(10, 2);
+        }
         ctx.stroke();
         
-        // 挡风玻璃
-        ctx.fillStyle = '#87CEEB';
+        // 帽子（马里奥风格）
+        ctx.fillStyle = this.color;
         ctx.beginPath();
-        ctx.roundRect(-5, -8, 15, 16, 3);
+        ctx.ellipse(5, -8, 10, 4, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        // 车轮
-        ctx.fillStyle = '#222';
-        const wheelPositions = [
-            { x: -12, y: -12 }, { x: 12, y: -12 },
-            { x: -12, y: 10 }, { x: 12, y: 10 }
-        ];
-        wheelPositions.forEach(pos => {
-            ctx.beginPath();
-            ctx.roundRect(pos.x - 4, pos.y - 3, 8, 6, 2);
-            ctx.fill();
-        });
-        
-        // 角色标识
-        ctx.restore();
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.scale(scale, scale);
-        
-        // 角色emoji
-        ctx.font = '16px Arial';
+        // 帽子logo
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 8px Arial';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(this.getCharacterEmoji(), 0, -20);
+        ctx.fillText(this.character[0], 5, -6);
         
-        // 道具指示
-        if (this.item) {
-            ctx.font = '14px Arial';
-            ctx.fillText(this.item.emoji, 0, 20);
+        // 车轮
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-12, -12, 8, 6);
+        ctx.fillRect(-12, 6, 8, 6);
+        ctx.fillRect(4, -12, 8, 6);
+        ctx.fillRect(4, 6, 8, 6);
+        
+        // 漂移特效
+        if (this.isDrifting && this.driftTime > 10) {
+            ctx.strokeStyle = `hsl(${(this.driftTime * 10) % 360}, 100%, 50%)`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(-15, -15, 8, 0, Math.PI * 2);
+            ctx.arc(-15, 15, 8, 0, Math.PI * 2);
+            ctx.stroke();
         }
         
+        // 无敌特效
+        if (this.invincibleTime > 0) {
+            ctx.strokeStyle = `hsl(${(Date.now() / 10) % 360}, 100%, 50%)`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, 20, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        
+        // 角色名称
         ctx.restore();
-    }
-    
-    getCharacterEmoji() {
-        const emojis = {
-            'Mario': '🔴',
-            'Luigi': '🟢',
-            'Peach': '🩷',
-            'Bowser': '🟤'
-        };
-        return emojis[this.character] || '🔴';
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.character, this.x, this.y - 25);
+        
+        // 排名
+        if (this.rank <= 3) {
+            const colors = ['#ffd700', '#c0c0c0', '#cd7f32'];
+            ctx.fillStyle = colors[this.rank - 1];
+            ctx.beginPath();
+            ctx.arc(this.x - 20, this.y - 20, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'black';
+            ctx.font = 'bold 10px Arial';
+            ctx.fillText(this.rank.toString(), this.x - 20, this.y - 17);
+        }
     }
 }
 
-// 玩家和AI赛车
+// 粒子类
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.life = 30;
+        this.color = color;
+        this.size = Math.random() * 4 + 2;
+    }
+    
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+        this.size *= 0.95;
+    }
+    
+    draw() {
+        ctx.globalAlpha = this.life / 30;
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+// 游戏变量
 let karts = [];
+let player;
 
-// 辅助函数：点到线段的距离
-function pointToLineDistance(px, py, x1, y1, x2, y2) {
-    const A = px - x1;
-    const B = py - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
+// 初始化游戏
+function initGame() {
+    karts = [];
+    particles = [];
+    items = [];
+    projectiles = [];
+    aiRaceResults = [];
     
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    let param = -1;
+    const characters = [
+        { name: 'Mario', color: '#e74c3c', isPlayer: gameMode === 'player' },
+        { name: 'Luigi', color: '#2ecc71', isPlayer: false },
+        { name: 'Peach', color: '#ff69b4', isPlayer: false },
+        { name: 'Bowser', color: '#f39c12', isPlayer: false }
+    ];
     
-    if (lenSq !== 0) {
-        param = dot / lenSq;
+    // 起始位置
+    const startPositions = [
+        { x: 150, y: 320 },
+        { x: 150, y: 350 },
+        { x: 150, y: 380 },
+        { x: 150, y: 410 }
+    ];
+    
+    for (let i = 0; i < GAME_CONFIG.PLAYER_COUNT; i++) {
+        const pos = startPositions[i];
+        const kart = new Kart(
+            i,
+            pos.x,
+            pos.y,
+            characters[i].color,
+            characters[i].isPlayer,
+            characters[i].name
+        );
+        karts.push(kart);
+        if (characters[i].isPlayer) player = kart;
     }
     
-    let xx, yy;
+    gameTime = 0;
+    gameState = 'countdown';
     
-    if (param < 0) {
-        xx = x1;
-        yy = y1;
-    } else if (param > 1) {
-        xx = x2;
-        yy = y2;
-    } else {
-        xx = x1 + param * C;
-        yy = y1 + param * D;
-    }
-    
-    const dx = px - xx;
-    const dy = py - yy;
-    return Math.sqrt(dx * dx + dy * dy);
+    // 倒计时
+    let count = 3;
+    const countdownInterval = setInterval(() => {
+        count--;
+        if (count <= 0) {
+            clearInterval(countdownInterval);
+            gameState = 'racing';
+            // 初始化所有赛车的单圈计时
+            for (let kart of karts) {
+                kart.currentLapStartTime = Date.now();
+            }
+        }
+    }, 1000);
 }
 
-// 创建粒子效果
-function createParticles(x, y, type, count) {
-    const colors = {
-        'speed': ['#FFD700', '#FFA500', '#FF6347'],
-        'collision': ['#888', '#AAA', '#666'],
-        'item': ['#FF69B4', '#00CED1', '#FFD700'],
-        'drift': ['#FF4500', '#FFD700', '#FF6347']
-    };
+// 更新游戏
+function update() {
+    if (gameState !== 'racing' && gameState !== 'countdown') return;
     
-    for (let i = 0; i < count; i++) {
-        particles.push({
-            x: x,
-            y: y,
-            vx: (Math.random() - 0.5) * 8,
-            vy: (Math.random() - 0.5) * 8,
-            life: 40 + Math.random() * 20,
-            color: colors[type][Math.floor(Math.random() * colors[type].length)],
-            size: Math.random() * 6 + 2
-        });
+    gameTime++;
+    
+    // 更新车辆
+    for (let kart of karts) {
+        kart.update();
     }
+    
+    // 更新粒子
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+    
+    // 更新道具
+    for (let i = items.length - 1; i >= 0; i--) {
+        items[i].life--;
+        if (items[i].life <= 0) items.splice(i, 1);
+    }
+    
+    // 更新投射物
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const proj = projectiles[i];
+        if (proj.target && !proj.target.finished) {
+            const dx = proj.target.x - proj.x;
+            const dy = proj.target.y - proj.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < 20) {
+                proj.target.spinOut();
+                projectiles.splice(i, 1);
+            } else {
+                proj.x += (dx / dist) * proj.speed;
+                proj.y += (dy / dist) * proj.speed;
+            }
+        } else {
+            projectiles.splice(i, 1);
+        }
+    }
+    
+    // 计算排名
+    calculateRanking();
+    
+    // 检查游戏结束
+    checkGameEnd();
+}
+
+// 计算排名
+function calculateRanking() {
+    // 根据圈数和进度排序
+    const sorted = [...karts].sort((a, b) => {
+        if (a.finished && b.finished) {
+            return a.finishTime - b.finishTime;
+        }
+        if (a.finished) return -1;
+        if (b.finished) return 1;
+        
+        if (a.lap !== b.lap) return b.lap - a.lap;
+        return b.checkpoint - a.checkpoint;
+    });
+    
+    for (let i = 0; i < sorted.length; i++) {
+        sorted[i].rank = i + 1;
+    }
+}
+
+// 检查游戏结束
+function checkGameEnd() {
+    const finishedCount = karts.filter(k => k.finished).length;
+    if (finishedCount === karts.length && gameState !== 'finished') {
+        gameState = 'finished';
+        
+        // 如果是AI竞速赛模式，记录结果
+        if (gameMode === 'aiRace') {
+            aiRaceResults = karts.map(k => ({
+                character: k.character,
+                color: k.color,
+                totalTime: (k.finishTime - k.currentLapStartTime) / 1000,
+                lapTimes: k.lapTimes,
+                bestLapTime: k.bestLapTime,
+                rank: k.rank
+            }));
+        }
+    }
+}
+
+// 绘制游戏
+function draw() {
+    // 清空画布
+    ctx.fillStyle = '#2d5016';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 绘制草地纹理
+    ctx.fillStyle = '#3d6b26';
+    for (let i = 0; i < canvas.width; i += 40) {
+        for (let j = 0; j < canvas.height; j += 40) {
+            if ((i + j) % 80 === 0) {
+                ctx.fillRect(i, j, 20, 20);
+            }
+        }
+    }
+    
+    // 绘制赛道
+    drawTrack();
+    
+    // 绘制道具箱
+    drawItemBoxes();
+    
+    // 绘制道具
+    drawItems();
+    
+    // 绘制投射物
+    drawProjectiles();
+    
+    // 绘制车辆
+    for (let kart of karts) {
+        kart.draw();
+    }
+    
+    // 绘制粒子
+    for (let p of particles) {
+        p.draw();
+    }
+    
+    // 绘制UI
+    drawUI();
 }
 
 // 绘制赛道
 function drawTrack() {
-    // 草地背景
-    ctx.fillStyle = '#3d7a1e';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 绘制赛道
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = GAME_CONFIG.TRACK_WIDTH;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     
-    // 赛道外边界
-    ctx.lineWidth = GAME_CONFIG.TRACK_WIDTH + 20;
-    ctx.strokeStyle = '#8B4513';
     ctx.beginPath();
     ctx.moveTo(TRACK_POINTS[0].x, TRACK_POINTS[0].y);
     for (let i = 1; i < TRACK_POINTS.length; i++) {
@@ -621,430 +852,327 @@ function drawTrack() {
     ctx.closePath();
     ctx.stroke();
     
-    // 赛道主体
-    ctx.lineWidth = GAME_CONFIG.TRACK_WIDTH;
-    ctx.strokeStyle = '#4a4a4a';
-    ctx.stroke();
-    
-    // 赛道中心线（虚线）
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#FFD700';
+    // 赛道边缘
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 4;
     ctx.setLineDash([20, 20]);
     ctx.stroke();
     ctx.setLineDash([]);
     
-    // 绘制检查点标记
-    TRACK_POINTS.forEach((point, index) => {
-        if (index === 0) {
-            // 起点线
-            ctx.fillStyle = '#FFF';
-            ctx.fillRect(point.x - 40, point.y - GAME_CONFIG.TRACK_WIDTH/2, 80, GAME_CONFIG.TRACK_WIDTH);
-            
-            // 黑白格
-            ctx.fillStyle = '#000';
-            for (let i = 0; i < 4; i++) {
-                for (let j = 0; j < 8; j++) {
-                    if ((i + j) % 2 === 0) {
-                        ctx.fillRect(
-                            point.x - 40 + i * 20,
-                            point.y - GAME_CONFIG.TRACK_WIDTH/2 + j * 15,
-                            20, 15
-                        );
-                    }
-                }
-            }
-        }
-    });
-}
-
-// 绘制障碍物
-function drawObstacles() {
-    OBSTACLES.forEach(obs => {
-        ctx.save();
-        ctx.translate(obs.x, obs.y);
-        
+    // 中心线
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([30, 30]);
+    ctx.beginPath();
+    ctx.moveTo(TRACK_POINTS[0].x, TRACK_POINTS[0].y);
+    for (let i = 1; i < TRACK_POINTS.length; i++) {
+        ctx.lineTo(TRACK_POINTS[i].x, TRACK_POINTS[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // 起点/终点线
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 10; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#fff' : '#000';
+        ctx.fillRect(140 + i * 8, 300, 8, 100);
+    }
+    
+    // 检查点标记
+    for (let i = 0; i < TRACK_POINTS.length; i++) {
+        const p = TRACK_POINTS[i];
+        ctx.fillStyle = i === 0 ? '#e74c3c' : '#3498db';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    // 障碍物
+    for (let obs of OBSTACLES) {
         if (obs.type === 'tree') {
             // 树干
-            ctx.fillStyle = '#8B4513';
-            ctx.fillRect(-8, 0, 16, 25);
-            
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect(obs.x - 5, obs.y - 5, 10, 15);
             // 树冠
-            ctx.fillStyle = '#228B22';
+            ctx.fillStyle = '#228b22';
             ctx.beginPath();
-            ctx.arc(0, -10, obs.radius, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // 树冠高光
-            ctx.fillStyle = '#32CD32';
-            ctx.beginPath();
-            ctx.arc(-5, -15, obs.radius * 0.5, 0, Math.PI * 2);
+            ctx.arc(obs.x, obs.y - 15, obs.radius, 0, Math.PI * 2);
             ctx.fill();
         } else if (obs.type === 'rock') {
-            // 石头
             ctx.fillStyle = '#808080';
             ctx.beginPath();
-            ctx.arc(0, 0, obs.radius, 0, Math.PI * 2);
+            ctx.arc(obs.x, obs.y, obs.radius, 0, Math.PI * 2);
             ctx.fill();
-            
             // 高光
-            ctx.fillStyle = '#A9A9A9';
+            ctx.fillStyle = '#a9a9a9';
             ctx.beginPath();
-            ctx.arc(-5, -5, obs.radius * 0.4, 0, Math.PI * 2);
+            ctx.arc(obs.x - 5, obs.y - 5, obs.radius * 0.4, 0, Math.PI * 2);
             ctx.fill();
         }
-        
-        ctx.restore();
-    });
+    }
 }
 
 // 绘制道具箱
 function drawItemBoxes() {
-    ITEM_BOXES.forEach(box => {
-        if (!box.active) return;
-        
-        ctx.save();
-        ctx.translate(box.x, box.y);
-        
-        // 浮动动画
-        const float = Math.sin(gameTime * 0.1) * 5;
-        ctx.translate(0, float);
-        
-        // 旋转动画
-        ctx.rotate(gameTime * 0.05);
-        
-        // 箱子
-        ctx.fillStyle = '#4169E1';
-        ctx.fillRect(-20, -20, 40, 40);
-        
-        // 问号
-        ctx.fillStyle = '#FFD700';
-        ctx.font = 'bold 24px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('?', 0, 2);
-        
-        // 边框
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(-20, -20, 40, 40);
-        
-        ctx.restore();
-    });
-}
-
-// 绘制道具和投射物
-function drawItems() {
-    // 地面道具
-    items.forEach((item, index) => {
-        ctx.font = '24px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(item.emoji, item.x, item.y);
-    });
-    
-    // 投射物
-    projectiles.forEach(proj => {
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(proj.emoji, proj.x, proj.y);
-    });
-}
-
-// 更新粒子
-function updateParticles() {
-    particles = particles.filter(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.life--;
-        p.size *= 0.95;
-        return p.life > 0;
-    });
-}
-
-// 绘制粒子
-function drawParticles() {
-    particles.forEach(p => {
-        ctx.globalAlpha = p.life / 40;
-        ctx.fillStyle = p.color;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-}
-
-// 更新投射物
-function updateProjectiles() {
-    projectiles = projectiles.filter(proj => {
-        proj.x += proj.vx;
-        proj.y += proj.vy;
-        
-        // 边界反弹
-        if (proj.x < 0 || proj.x > canvas.width) {
-            proj.vx *= -1;
-            proj.bounces--;
-        }
-        if (proj.y < 0 || proj.y > canvas.height) {
-            proj.vy *= -1;
-            proj.bounces--;
-        }
-        
-        // 检查击中赛车
-        karts.forEach(kart => {
-            if (kart.id !== proj.owner && !kart.invincible) {
-                const dist = Math.hypot(kart.x - proj.x, kart.y - proj.y);
-                if (dist < 25) {
-                    kart.stunned = true;
-                    kart.stunTime = 60;
-                    kart.vx *= 0.3;
-                    kart.vy *= 0.3;
-                    createParticles(kart.x, kart.y, 'collision', 15);
-                    proj.bounces = 0;
-                }
-            }
-        });
-        
-        return proj.bounces > 0;
-    });
-}
-
-// 更新道具效果
-function updateItems() {
-    // 检查赛车碰到地面道具
-    items = items.filter(item => {
-        let hit = false;
-        karts.forEach(kart => {
-            if (kart.id !== item.owner) {
-                const dist = Math.hypot(kart.x - item.x, kart.y - item.y);
-                if (dist < 20) {
-                    kart.stunned = true;
-                    kart.stunTime = 90;
-                    kart.speed *= 0.3;
-                    createParticles(kart.x, kart.y, 'collision', 10);
-                    hit = true;
-                }
-            }
-        });
-        return !hit;
-    });
-}
-
-// 赛车间碰撞检测
-function checkKartCollisions() {
-    for (let i = 0; i < karts.length; i++) {
-        for (let j = i + 1; j < karts.length; j++) {
-            const k1 = karts[i];
-            const k2 = karts[j];
+    for (let box of ITEM_BOXES) {
+        if (box.active) {
+            // 浮动动画
+            const float = Math.sin(Date.now() / 200) * 3;
             
-            const dist = Math.hypot(k1.x - k2.x, k1.y - k2.y);
-            const minDist = 35;
+            // 问号方块
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(box.x - 15, box.y - 15 + float, 30, 30);
             
-            if (dist < minDist) {
-                // 推开
-                const angle = Math.atan2(k2.y - k1.y, k2.x - k1.x);
-                const force = (minDist - dist) * 0.5;
-                
-                k1.x -= Math.cos(angle) * force;
-                k1.y -= Math.sin(angle) * force;
-                k2.x += Math.cos(angle) * force;
-                k2.y += Math.sin(angle) * force;
-                
-                // 速度交换
-                const tempVx = k1.vx * 0.8;
-                const tempVy = k1.vy * 0.8;
-                k1.vx = k2.vx * 0.8;
-                k1.vy = k2.vy * 0.8;
-                k2.vx = tempVx;
-                k2.vy = tempVy;
-            }
+            // 边框
+            ctx.strokeStyle = '#c0392b';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(box.x - 15, box.y - 15 + float, 30, 30);
+            
+            // 问号
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('?', box.x, box.y + 5 + float);
+            
+            // 光晕
+            ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(box.x, box.y + float, 20, 0, Math.PI * 2);
+            ctx.stroke();
         }
     }
 }
 
-// 计算排名
-function calculateRanking() {
-    // 根据圈数和检查点排序
-    karts.sort((a, b) => {
-        if (a.lap !== b.lap) return b.lap - a.lap;
-        if (a.checkpoint !== b.checkpoint) return b.checkpoint - a.checkpoint;
-        return a.finishTime - b.finishTime;
-    });
-    
-    karts.forEach((kart, index) => {
-        kart.rank = index + 1;
-    });
+// 绘制道具
+function drawItems() {
+    for (let item of items) {
+        if (item.type === 'banana') {
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🍌', item.x, item.y);
+        }
+    }
 }
 
-// 更新UI
-function updateUI() {
-    const player = karts.find(k => k.isPlayer);
-    if (!player) return;
+// 绘制投射物
+function drawProjectiles() {
+    for (let proj of projectiles) {
+        if (proj.type === 'shell') {
+            ctx.fillStyle = '#2ecc71';
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 龟壳纹理
+            ctx.strokeStyle = '#27ae60';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+}
+
+// 绘制UI
+function drawUI() {
+    // 速度表
+    const speed = player ? Math.floor(player.speed * 10) : 0;
+    document.getElementById('speedValue').textContent = speed;
     
-    document.getElementById('lapValue').textContent = `${Math.min(player.lap, GAME_CONFIG.TOTAL_LAPS)}/${GAME_CONFIG.TOTAL_LAPS}`;
-    document.getElementById('rankValue').textContent = `${player.rank}/${GAME_CONFIG.PLAYER_COUNT}`;
-    document.getElementById('speedValue').textContent = Math.floor(player.speed * 10);
+    // 圈数信息
+    const currentLap = player ? player.lap : 1;
+    document.getElementById('lapInfo').innerHTML = `
+        <div>圈数</div>
+        <div style="font-size: 1.5rem; color: #ffd700;">${currentLap}/${GAME_CONFIG.TOTAL_LAPS}</div>
+    `;
     
+    // 排名
+    const rank = player ? player.rank : 1;
+    const rankSuffix = ['st', 'nd', 'rd', 'th'][rank - 1];
+    document.getElementById('ranking').innerHTML = `
+        <div>排名</div>
+        <div style="font-size: 1.5rem; color: #ffd700;">${rank}${rankSuffix}</div>
+    `;
+    
+    // 道具
     const itemBox = document.getElementById('itemBox');
-    if (player.item) {
-        itemBox.textContent = player.item.emoji;
-        itemBox.style.borderColor = '#FFD700';
+    if (player && player.item) {
+        itemBox.textContent = ITEM_TYPES[player.item].emoji;
+        itemBox.style.borderColor = '#ffd700';
     } else {
-        itemBox.textContent = '❓';
+        itemBox.textContent = '';
         itemBox.style.borderColor = '#666';
     }
+    
+    // 倒计时
+    if (gameState === 'countdown') {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 120px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const count = Math.ceil((4000 - (Date.now() - gameTime * 16)) / 1000);
+        const text = count > 0 ? count : 'GO!';
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    
+    // 游戏结束画面
+    if (gameState === 'finished') {
+        drawGameOver();
+    }
 }
 
-// 游戏主循环
-function gameLoop() {
-    if (gameState === 'racing') {
-        gameTime++;
-        
-        // 更新所有赛车
-        karts.forEach(kart => kart.update());
-        
-        // 更新投射物
-        updateProjectiles();
-        
-        // 更新道具
-        updateItems();
-        
-        // 碰撞检测
-        checkKartCollisions();
-        
-        // 更新粒子
-        updateParticles();
-        
-        // 计算排名
-        calculateRanking();
-        
-        // 更新UI
-        updateUI();
-        
-        // 检查游戏结束
-        const finishedCount = karts.filter(k => k.finished).length;
-        if (finishedCount === GAME_CONFIG.PLAYER_COUNT) {
-            endGame();
+// 绘制游戏结束画面
+function drawGameOver() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 48px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    if (gameMode === 'aiRace') {
+        ctx.fillText('🏁 AI竞速赛结束！', canvas.width / 2, 80);
+    } else {
+        const playerRank = player ? player.rank : 1;
+        if (playerRank === 1) {
+            ctx.fillText('🏆 冠军！', canvas.width / 2, 80);
+        } else if (playerRank === 2) {
+            ctx.fillText('🥈 亚军！', canvas.width / 2, 80);
+        } else if (playerRank === 3) {
+            ctx.fillText('🥉 季军！', canvas.width / 2, 80);
+        } else {
+            ctx.fillText('第 ' + playerRank + ' 名', canvas.width / 2, 80);
         }
     }
     
-    // 绘制
-    draw();
+    // 排名列表
+    const sorted = [...karts].sort((a, b) => a.rank - b.rank);
     
+    ctx.font = 'bold 24px Arial';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('最终排名', canvas.width / 2, 140);
+    
+    // 表头
+    ctx.font = 'bold 18px Arial';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('排名  角色      总用时     最佳单圈', canvas.width / 2, 175);
+    
+    ctx.font = '20px Arial';
+    for (let i = 0; i < sorted.length; i++) {
+        const kart = sorted[i];
+        const y = 210 + i * 40;
+        
+        // 排名背景
+        if (i < 3) {
+            const colors = ['rgba(255, 215, 0, 0.3)', 'rgba(192, 192, 192, 0.3)', 'rgba(205, 127, 50, 0.3)'];
+            ctx.fillStyle = colors[i];
+            ctx.fillRect(canvas.width / 2 - 200, y - 20, 400, 35);
+        }
+        
+        // 排名
+        ctx.fillStyle = i < 3 ? '#ffd700' : '#fff';
+        ctx.fillText(`${i + 1}`, canvas.width / 2 - 180, y);
+        
+        // 角色
+        ctx.fillStyle = kart.color;
+        ctx.fillText(kart.character, canvas.width / 2 - 100, y);
+        
+        // 总用时
+        const totalTime = kart.finished ? (kart.finishTime / 1000).toFixed(2) : '--';
+        ctx.fillStyle = '#fff';
+        ctx.fillText(totalTime + 's', canvas.width / 2 + 20, y);
+        
+        // 最佳单圈
+        const bestLap = kart.bestLapTime !== Infinity ? (kart.bestLapTime / 1000).toFixed(2) + 's' : '--';
+        ctx.fillStyle = '#2ecc71';
+        ctx.fillText(bestLap, canvas.width / 2 + 140, y);
+    }
+    
+    // 单圈详细成绩
+    if (gameMode === 'aiRace') {
+        ctx.font = 'bold 18px Arial';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText('各圈成绩详情', canvas.width / 2, 390);
+        
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#aaa';
+        ctx.fillText('角色      第1圈      第2圈      第3圈', canvas.width / 2, 415);
+        
+        for (let i = 0; i < sorted.length; i++) {
+            const kart = sorted[i];
+            const y = 440 + i * 30;
+            
+            ctx.fillStyle = kart.color;
+            ctx.fillText(kart.character.substring(0, 6), canvas.width / 2 - 120, y);
+            
+            ctx.fillStyle = '#fff';
+            for (let j = 0; j < 3; j++) {
+                const lapTime = kart.lapTimes[j] ? (kart.lapTimes[j] / 1000).toFixed(2) + 's' : '--';
+                ctx.fillText(lapTime, canvas.width / 2 - 40 + j * 80, y);
+            }
+        }
+    }
+    
+    // 重新开始提示
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 20px Arial';
+    ctx.fillText('按空格键或点击重新开始', canvas.width / 2, canvas.height - 50);
+}
+
+// 游戏循环
+function gameLoop() {
+    update();
+    draw();
     requestAnimationFrame(gameLoop);
 }
 
-// 绘制场景
-function draw() {
-    // 清空画布
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+// 玩家输入处理
+function handlePlayerInput() {
+    if (!player || gameState !== 'racing') return;
     
-    // 绘制赛道
-    drawTrack();
-    
-    // 绘制道具箱
-    drawItemBoxes();
-    
-    // 绘制障碍物
-    drawObstacles();
-    
-    // 绘制地面道具
-    drawItems();
-    
-    // 绘制粒子（在赛车下方）
-    drawParticles();
-    
-    // 绘制赛车
-    karts.forEach(kart => kart.draw());
-    
-    // 绘制投射物
-    projectiles.forEach(proj => {
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(proj.emoji, proj.x, proj.y);
-    });
-}
-
-// 初始化游戏
-function initGame() {
-    gameTime = 0;
-    particles = [];
-    items = [];
-    projectiles = [];
-    
-    // 创建赛车
-    const colors = ['#FF0000', '#00AA00', '#FF69B4', '#8B4513'];
-    const characters = ['Mario', 'Luigi', 'Peach', 'Bowser'];
-    
-    karts = [];
-    for (let i = 0; i < GAME_CONFIG.PLAYER_COUNT; i++) {
-        const startX = 150 + (i % 2) * 40;
-        const startY = 350 + Math.floor(i / 2) * 40;
-        karts.push(new Kart(
-            i,
-            startX,
-            startY,
-            colors[i],
-            i === 0, // 第一个是玩家
-            characters[i]
-        ));
+    // 加速/减速 - 使用绝对方向
+    if (keys.up) {
+        player.vy -= player.acceleration;
+    }
+    if (keys.down) {
+        player.vy += player.acceleration;
+    }
+    if (keys.left) {
+        player.vx -= player.acceleration;
+    }
+    if (keys.right) {
+        player.vx += player.acceleration;
     }
     
-    // 重置道具箱
-    ITEM_BOXES.forEach(box => box.active = true);
-}
-
-// 开始游戏
-function startGame() {
-    document.getElementById('startScreen').classList.add('hidden');
+    // 限制最大速度
+    const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+    const boostMultiplier = player.boostTime > 0 ? 1.5 : 1;
+    const actualMaxSpeed = player.maxSpeed * boostMultiplier;
     
-    initGame();
-    
-    // 倒计时
-    gameState = 'countdown';
-    let count = 3;
-    const countdownEl = document.getElementById('countdown');
-    countdownEl.classList.remove('hidden');
-    countdownEl.textContent = count;
-    
-    const countdownInterval = setInterval(() => {
-        count--;
-        if (count > 0) {
-            countdownEl.textContent = count;
-        } else if (count === 0) {
-            countdownEl.textContent = 'GO!';
-            countdownEl.style.color = '#4ade80';
-        } else {
-            clearInterval(countdownInterval);
-            countdownEl.classList.add('hidden');
-            countdownEl.style.color = '#FFD700';
-            gameState = 'racing';
-        }
-    }, 1000);
-}
-
-// 结束游戏
-function endGame() {
-    gameState = 'finished';
-    const player = karts.find(k => k.isPlayer);
-    
-    document.getElementById('gameOverScreen').classList.remove('hidden');
-    
-    let rankText = '';
-    switch (player.rank) {
-        case 1: rankText = '🥇 第一名！恭喜冠军！'; break;
-        case 2: rankText = '🥈 第二名！表现不错！'; break;
-        case 3: rankText = '🥉 第三名！再接再厉！'; break;
-        default: rankText = `第${player.rank}名...下次加油！`; break;
+    if (speed > actualMaxSpeed) {
+        const ratio = actualMaxSpeed / speed;
+        player.vx *= ratio;
+        player.vy *= ratio;
     }
-    document.getElementById('finalRank').textContent = rankText;
-}
-
-// 重新开始
-function restartGame() {
-    document.getElementById('gameOverScreen').classList.add('hidden');
-    startGame();
+    
+    // 更新角度（根据速度方向）
+    if (speed > 0.5) {
+        player.angle = Math.atan2(player.vy, player.vx);
+    }
+    
+    // 漂移
+    player.isDrifting = keys.shift && speed > 5;
+    
+    // 使用道具
+    if (keys.space && player.item) {
+        player.useItem();
+    }
 }
 
 // 键盘事件
@@ -1072,7 +1200,9 @@ window.addEventListener('keydown', (e) => {
             break;
         case ' ':
             keys.space = true;
-            e.preventDefault();
+            if (gameState === 'finished') {
+                showModeSelect();
+            }
             break;
         case 'Shift':
             keys.shift = true;
@@ -1111,202 +1241,126 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// 摇杆状态
-const joystick = {
-    active: false,
-    originX: 0,
-    originY: 0,
-    currentX: 0,
-    currentY: 0,
-    deltaX: 0,
-    deltaY: 0,
-    maxDistance: 45 // 摇杆最大移动距离
-};
+// 触摸控制
+let joystickActive = false;
+let joystickCenter = { x: 0, y: 0 };
+let joystickCurrent = { x: 0, y: 0 };
 
-// 触摸控制支持 - 虚拟摇杆
-function setupTouchControls() {
-    const joystickBase = document.getElementById('joystickBase');
-    const joystickKnob = document.getElementById('joystick');
-    const gasButton = document.getElementById('gasButton');
-    const brakeButton = document.getElementById('brakeButton');
-    const itemButton = document.getElementById('itemButton');
-    const driftButton = document.getElementById('driftButton');
-    
-    if (!joystickBase) return; // 如果元素不存在则退出
-    
-    // 获取摇杆底座中心位置
-    function getJoystickCenter() {
-        const rect = joystickBase.getBoundingClientRect();
-        return {
+const joystick = document.getElementById('joystick');
+const joystickKnob = document.getElementById('joystickKnob');
+
+if (joystick) {
+    joystick.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joystick.getBoundingClientRect();
+        joystickCenter = {
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2
         };
-    }
+        joystickActive = true;
+        updateJoystick(touch);
+    });
     
-    // 更新摇杆位置
-    function updateJoystick(touchX, touchY) {
-        const center = getJoystickCenter();
-        let dx = touchX - center.x;
-        let dy = touchY - center.y;
-        
-        // 计算距离和角度
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        
-        // 限制摇杆移动范围
-        const clampedDistance = Math.min(distance, joystick.maxDistance);
-        
-        // 更新摇杆位置
-        joystick.currentX = Math.cos(angle) * clampedDistance;
-        joystick.currentY = Math.sin(angle) * clampedDistance;
-        
-        // 应用样式
-        joystickKnob.style.transform = `translate(calc(-50% + ${joystick.currentX}px), calc(-50% + ${joystick.currentY}px))`;
-        
-        // 更新输入状态（归一化到 -1 到 1）
-        joystick.deltaX = joystick.currentX / joystick.maxDistance;
-        joystick.deltaY = joystick.currentY / joystick.maxDistance;
-        
-        // 设置方向键状态
-        keys.left = joystick.deltaX < -0.3;
-        keys.right = joystick.deltaX > 0.3;
-        keys.up = joystick.deltaY < -0.3;
-        keys.down = joystick.deltaY > 0.3;
-    }
+    joystick.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (joystickActive) {
+            updateJoystick(e.touches[0]);
+        }
+    });
     
-    // 重置摇杆
-    function resetJoystick() {
-        joystick.active = false;
-        joystick.currentX = 0;
-        joystick.currentY = 0;
-        joystick.deltaX = 0;
-        joystick.deltaY = 0;
-        joystickKnob.style.transform = 'translate(-50%, -50%)';
-        joystickKnob.classList.remove('active');
-        
-        keys.left = false;
-        keys.right = false;
+    joystick.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        joystickActive = false;
+        joystickKnob.style.transform = 'translate(0px, 0px)';
         keys.up = false;
         keys.down = false;
-    }
-    
-    // 摇杆触摸事件
-    joystickBase.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        joystick.active = true;
-        joystickKnob.classList.add('active');
-        const touch = e.touches[0];
-        updateJoystick(touch.clientX, touch.clientY);
-    }, { passive: false });
-    
-    joystickBase.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        if (joystick.active) {
-            const touch = e.touches[0];
-            updateJoystick(touch.clientX, touch.clientY);
-        }
-    }, { passive: false });
-    
-    joystickBase.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        resetJoystick();
+        keys.left = false;
+        keys.right = false;
     });
-    
-    joystickBase.addEventListener('touchcancel', (e) => {
-        e.preventDefault();
-        resetJoystick();
-    });
-    
-    // 鼠标支持（用于桌面测试）
-    let mouseDown = false;
-    joystickBase.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        mouseDown = true;
-        joystick.active = true;
-        joystickKnob.classList.add('active');
-        updateJoystick(e.clientX, e.clientY);
-    });
-    
-    window.addEventListener('mousemove', (e) => {
-        if (mouseDown && joystick.active) {
-            updateJoystick(e.clientX, e.clientY);
-        }
-    });
-    
-    window.addEventListener('mouseup', () => {
-        if (mouseDown) {
-            mouseDown = false;
-            resetJoystick();
-        }
-    });
-    
-    // 添加按钮触摸事件
-    const addButtonListeners = (element, key) => {
-        element.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            keys[key] = true;
-            element.classList.add('active');
-        }, { passive: false });
-        
-        element.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            keys[key] = false;
-            element.classList.remove('active');
-        });
-        
-        element.addEventListener('touchcancel', (e) => {
-            e.preventDefault();
-            keys[key] = false;
-            element.classList.remove('active');
-        });
-        
-        element.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            keys[key] = true;
-            element.classList.add('active');
-        });
-        
-        element.addEventListener('mouseup', (e) => {
-            e.preventDefault();
-            keys[key] = false;
-            element.classList.remove('active');
-        });
-        
-        element.addEventListener('mouseleave', () => {
-            keys[key] = false;
-            element.classList.remove('active');
-        });
-    };
-    
-    // 绑定按钮
-    if (gasButton) addButtonListeners(gasButton, 'up');
-    if (brakeButton) addButtonListeners(brakeButton, 'down');
-    if (itemButton) addButtonListeners(itemButton, 'space');
-    if (driftButton) addButtonListeners(driftButton, 'shift');
-    
-    // 防止触摸时页面滚动
-    document.body.addEventListener('touchmove', (e) => {
-        if (e.target.closest('#touchControls')) {
-            e.preventDefault();
-        }
-    }, { passive: false });
 }
 
-// 防止双指缩放
-document.addEventListener('gesturestart', (e) => {
-    e.preventDefault();
-});
+function updateJoystick(touch) {
+    const maxDist = 40;
+    const dx = touch.clientX - joystickCenter.x;
+    const dy = touch.clientY - joystickCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const clampedDist = Math.min(dist, maxDist);
+    const angle = Math.atan2(dy, dx);
+    
+    const knobX = Math.cos(angle) * clampedDist;
+    const knobY = Math.sin(angle) * clampedDist;
+    
+    joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+    
+    // 设置方向键状态
+    const threshold = 10;
+    keys.up = dy < -threshold;
+    keys.down = dy > threshold;
+    keys.left = dx < -threshold;
+    keys.right = dx > threshold;
+}
 
-document.addEventListener('gesturechange', (e) => {
-    e.preventDefault();
-});
+// 动作按钮
+const btnItem = document.getElementById('btnItem');
+const btnDrift = document.getElementById('btnDrift');
 
-document.addEventListener('gestureend', (e) => {
-    e.preventDefault();
-});
+if (btnItem) {
+    btnItem.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.space = true;
+        btnItem.classList.add('active');
+    });
+    btnItem.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.space = false;
+        btnItem.classList.remove('active');
+    });
+}
 
-// 初始化触摸控制
-setupTouchControls();
+if (btnDrift) {
+    btnDrift.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        keys.shift = true;
+        btnDrift.classList.add('active');
+    });
+    btnDrift.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        keys.shift = false;
+        btnDrift.classList.remove('active');
+    });
+}
 
-// 启动游戏循环
-requestAnimationFrame(gameLoop);
+// 模式选择
+function showModeSelect() {
+    gameState = 'modeSelect';
+    document.getElementById('modeSelectScreen').style.display = 'flex';
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('gameOverScreen').style.display = 'none';
+}
+
+// 开始玩家模式
+function startPlayerMode() {
+    gameMode = 'player';
+    document.getElementById('modeSelectScreen').style.display = 'none';
+    initGame();
+}
+
+// 开始AI竞速赛模式
+function startAIRaceMode() {
+    gameMode = 'aiRace';
+    document.getElementById('modeSelectScreen').style.display = 'none';
+    initGame();
+}
+
+// 显示模式选择
+function showModeSelectScreen() {
+    showModeSelect();
+}
+
+// 游戏循环中添加玩家输入处理
+setInterval(handlePlayerInput, 1000 / 60);
+
+// 启动游戏
+showModeSelect();
+gameLoop();

@@ -51,27 +51,13 @@
             border-radius: 10px; 
             box-shadow: 0 0 20px rgba(0,0,0,0.5), 0 0 40px rgba(255,215,0,0.2); 
             overflow: hidden; 
-            width: 1000px;
-            height: 700px;
-            max-width: 100vw;
-            max-height: 100vh;
         }
         @media (max-width: 768px) { 
-            #gameContainer { 
-                border-radius: 0; 
-                width: 100vw; 
-                height: 100vh; 
-                max-width: 100vw; 
-                max-height: 100vh;
-            }
+            #gameContainer { border-radius: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; }
         }
         
-        #gameCanvas { 
-            display: block; 
-            background: #2d5016; 
-            width: 100%;
-            height: 100%;
-        }
+        #gameCanvas { display: block; background: #2d5016; }
+        @media (max-width: 768px) { #gameCanvas { width: 100%; height: 100%; } }
         
         #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         .ui-panel { 
@@ -83,31 +69,18 @@
             font-weight: bold; 
             font-size: 0.9rem;
         }
-        @media (max-width: 768px) { 
-            .ui-panel { 
-                padding: 5px 8px; 
-                border-radius: 6px; 
-                font-size: 0.75rem; 
-            }
-            #lapInfo { top: 8px; left: 8px; }
-            #ranking { top: 8px; right: 8px; }
-            #speedometer { bottom: 80px; right: 8px; }
-            #itemBox { 
-                width: 45px; 
-                height: 45px; 
-                font-size: 1.5rem; 
-                bottom: 75px; 
-                left: 50%; 
-                transform: translateX(-50%); 
-            }
-        }
+        @media (max-width: 768px) { .ui-panel { padding: 5px 10px; border-radius: 6px; font-size: 0.8rem; } }
         
         #speedometer { bottom: 15px; right: 15px; text-align: center; }
+        @media (max-width: 768px) { #speedometer { bottom: 100px; right: 10px; } }
         #speedValue { font-size: 1.5rem; color: #ffd700; }
-        @media (max-width: 768px) { #speedValue { font-size: 1.1rem; } }
+        @media (max-width: 768px) { #speedValue { font-size: 1.2rem; } }
         
         #lapInfo { top: 15px; left: 15px; }
+        @media (max-width: 768px) { #lapInfo { top: 10px; left: 10px; } }
+        
         #ranking { top: 15px; right: 15px; text-align: right; }
+        @media (max-width: 768px) { #ranking { top: 10px; right: 10px; } }
         
         #itemBox { 
             bottom: 15px; left: 50%; transform: translateX(-50%); 
@@ -115,18 +88,19 @@
             display: flex; align-items: center; justify-content: center; 
             font-size: 2rem; border: 3px solid #ffd700; 
         }
+        @media (max-width: 768px) { #itemBox { width: 50px; height: 50px; font-size: 1.8rem; bottom: 90px; } }
         
         #controls { margin-top: 10px; color: #aaa; font-size: 0.8rem; text-align: center; }
         @media (max-width: 768px) { #controls { display: none; } }
         
-        #startScreen, #gameOverScreen { 
+        #startScreen, #gameOverScreen, #modeSelectScreen, #aiRaceResultScreen { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
             pointer-events: auto; z-index: 100; 
         }
         .screen-title { font-size: 2.5rem; color: #ffd700; margin-bottom: 15px; text-shadow: 2px 2px 0 #e74c3c; }
-        @media (max-width: 768px) { .screen-title { font-size: 1.6rem; } }
+        @media (max-width: 768px) { .screen-title { font-size: 1.8rem; } }
         
         .btn { 
             background: linear-gradient(145deg, #e74c3c, #c0392b); 
@@ -134,8 +108,20 @@
             font-size: 1.1rem; border-radius: 25px; cursor: pointer; 
             transition: all 0.3s; box-shadow: 0 5px 15px rgba(231,76,60,0.4); margin: 8px; 
         }
-        @media (max-width: 768px) { .btn { padding: 10px 25px; font-size: 0.95rem; } }
+        @media (max-width: 768px) { .btn { padding: 10px 25px; font-size: 1rem; } }
         .btn:hover, .btn:active { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(231,76,60,0.6); }
+        
+        .btn-secondary {
+            background: linear-gradient(145deg, #3498db, #2980b9);
+            box-shadow: 0 5px 15px rgba(52,152,219,0.4);
+        }
+        .btn-secondary:hover, .btn-secondary:active { box-shadow: 0 8px 25px rgba(52,152,219,0.6); }
+        
+        .btn-green {
+            background: linear-gradient(145deg, #27ae60, #229954);
+            box-shadow: 0 5px 15px rgba(39,174,96,0.4);
+        }
+        .btn-green:hover, .btn-green:active { box-shadow: 0 8px 25px rgba(39,174,96,0.6); }
         
         .hidden { display: none !important; }
         
@@ -143,19 +129,115 @@
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
             font-size: 5rem; color: #ffd700; font-weight: bold; text-shadow: 4px 4px 0 #e74c3c; z-index: 50; 
         }
-        @media (max-width: 768px) { #countdown { font-size: 3.5rem; } }
+        @media (max-width: 768px) { #countdown { font-size: 4rem; } }
+        
+        /* 模式选择屏幕 */
+        #modeSelectScreen .mode-description {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin: 5px 0 20px 0;
+            text-align: center;
+            max-width: 400px;
+        }
+        
+        /* AI竞速结果屏幕 */
+        #aiRaceResultScreen {
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        #aiRaceResultScreen .screen-title {
+            margin-bottom: 10px;
+        }
+        
+        .results-container {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            max-width: 800px;
+            width: 90%;
+        }
+        
+        .result-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            border-left: 4px solid #ffd700;
+        }
+        
+        .result-rank {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ffd700;
+            width: 40px;
+            text-align: center;
+        }
+        
+        .result-rank.gold { color: #ffd700; }
+        .result-rank.silver { color: #c0c0c0; }
+        .result-rank.bronze { color: #cd7f32; }
+        
+        .result-character {
+            font-size: 1.8rem;
+            margin: 0 15px;
+        }
+        
+        .result-info {
+            flex: 1;
+            color: white;
+        }
+        
+        .result-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+        
+        .result-laps {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 3px;
+        }
+        
+        .result-best {
+            color: #4ade80;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+        
+        .lap-times-detail {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 5px;
+        }
+        
+        .watching-badge {
+            background: linear-gradient(145deg, #9b59b6, #8e44ad);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 60;
+        }
         
         /* 移动端触摸控制 - 虚拟摇杆 */
-        #touchControls { display: none; position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 200; pointer-events: none; }
+        #touchControls { display: none; position: fixed; bottom: 0; left: 0; width: 100%; height: 100%; z-index: 200; pointer-events: none; }
         @media (max-width: 768px) { #touchControls { display: block; } }
         
         /* 虚拟摇杆底座 */
         #joystickBase {
             position: absolute;
-            left: 2vw;
-            bottom: 2vh;
-            width: clamp(90px, 16vw, 130px);
-            height: clamp(90px, 16vw, 130px);
+            left: 20px;
+            bottom: 20px;
+            width: 140px;
+            height: 140px;
             background: rgba(255,255,255,0.1);
             border: 3px solid rgba(255,255,255,0.3);
             border-radius: 50%;
@@ -168,8 +250,8 @@
             position: absolute;
             left: 50%;
             top: 50%;
-            width: clamp(40px, 7vw, 60px);
-            height: clamp(40px, 7vw, 60px);
+            width: 60px;
+            height: 60px;
             background: linear-gradient(145deg, rgba(255,215,0,0.9), rgba(255,165,0,0.9));
             border: 3px solid #fff;
             border-radius: 50%;
@@ -185,31 +267,30 @@
         /* 右侧控制按钮区域 */
         #rightControls {
             position: absolute;
-            right: 2vw;
-            bottom: 2vh;
+            right: 20px;
+            bottom: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: clamp(6px, 1.5vh, 12px);
+            gap: 15px;
             pointer-events: auto;
         }
         
         /* 油门按钮 */
         #gasButton {
-            width: clamp(60px, 12vw, 85px);
-            height: clamp(60px, 12vw, 85px);
+            width: 90px;
+            height: 90px;
             background: linear-gradient(145deg, rgba(76,175,80,0.8), rgba(56,142,60,0.8));
             border: 3px solid rgba(255,255,255,0.5);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: clamp(20px, 4vw, 30px);
+            font-size: 32px;
             color: white;
             touch-action: none;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             transition: all 0.1s;
-            position: relative;
         }
         
         #gasButton:active, #gasButton.active {
@@ -219,20 +300,19 @@
         
         /* 刹车按钮 */
         #brakeButton {
-            width: clamp(50px, 10vw, 70px);
-            height: clamp(50px, 10vw, 70px);
+            width: 70px;
+            height: 70px;
             background: linear-gradient(145deg, rgba(231,76,60,0.8), rgba(192,57,43,0.8));
             border: 3px solid rgba(255,255,255,0.5);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: clamp(16px, 3.5vw, 24px);
+            font-size: 24px;
             color: white;
             touch-action: none;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             transition: all 0.1s;
-            position: relative;
         }
         
         #brakeButton:active, #brakeButton.active {
@@ -242,20 +322,19 @@
         
         /* 道具按钮 */
         #itemButton {
-            width: clamp(50px, 10vw, 70px);
-            height: clamp(50px, 10vw, 70px);
+            width: 70px;
+            height: 70px;
             background: linear-gradient(145deg, rgba(155,89,182,0.8), rgba(142,68,173,0.8));
             border: 3px solid rgba(255,255,255,0.5);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: clamp(16px, 3.5vw, 24px);
+            font-size: 28px;
             color: white;
             touch-action: none;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             transition: all 0.1s;
-            position: relative;
         }
         
         #itemButton:active, #itemButton.active {
@@ -265,20 +344,19 @@
         
         /* 漂移按钮 */
         #driftButton {
-            width: clamp(45px, 9vw, 65px);
-            height: clamp(45px, 9vw, 65px);
+            width: 60px;
+            height: 60px;
             background: linear-gradient(145deg, rgba(52,152,219,0.8), rgba(41,128,185,0.8));
             border: 3px solid rgba(255,255,255,0.5);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: clamp(14px, 3vw, 20px);
+            font-size: 20px;
             color: white;
             touch-action: none;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             transition: all 0.1s;
-            position: relative;
         }
         
         #driftButton:active, #driftButton.active {
@@ -290,12 +368,9 @@
         .btn-label {
             position: absolute;
             bottom: -18px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: clamp(8px, 1.8vw, 11px);
-            color: rgba(255,255,255,0.8);
+            font-size: 10px;
+            color: rgba(255,255,255,0.7);
             white-space: nowrap;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
         }
     </style>
 </head>
@@ -331,11 +406,24 @@
             </div>
             
             <!-- 开始界面 -->
-            <div id="startScreen">
+            <div id="startScreen" class="hidden">
                 <div class="screen-title">🏎️ 马里奥卡丁车</div>
-                <button class="btn" onclick="startGame()">开始游戏</button>
+                <button class="btn" onclick="showModeSelect()">开始游戏</button>
                 <div id="controls">WASD/方向键移动 | 空格使用道具 | Shift漂移</div>
             </div>
+            
+            <!-- 模式选择界面 -->
+            <div id="modeSelectScreen">
+                <div class="screen-title">🏎️ 马里奥卡丁车</div>
+                <div class="mode-description">选择游戏模式开始比赛</div>
+                <button class="btn" onclick="startPlayerGame()">🎮 玩家模式</button>
+                <div class="mode-description">亲自驾驶，与3个AI对手竞速</div>
+                <button class="btn btn-secondary" onclick="startAIRace()">🤖 AI竞速赛</button>
+                <div class="mode-description">观看4个AI自动比赛，查看排行榜</div>
+            </div>
+            
+            <!-- 观看中标识 -->
+            <div id="watchingBadge" class="watching-badge hidden">👀 观看AI比赛中...</div>
             
             <!-- 倒计时 -->
             <div id="countdown" class="hidden">3</div>
@@ -345,6 +433,19 @@
                 <div class="screen-title">🏁 比赛结束</div>
                 <div id="finalRank" style="color: white; font-size: 1.5rem; margin-bottom: 20px;"></div>
                 <button class="btn" onclick="restartGame()">再来一局</button>
+                <button class="btn btn-secondary" onclick="backToModeSelect()">返回主菜单</button>
+            </div>
+            
+            <!-- AI竞速结果界面 -->
+            <div id="aiRaceResultScreen" class="hidden">
+                <div class="screen-title">🏁 AI竞速赛结果</div>
+                <div class="results-container" id="aiResultsContainer">
+                    <!-- 动态生成结果 -->
+                </div>
+                <div style="display: flex; gap: 15px; margin-top: 20px;">
+                    <button class="btn" onclick="restartAIRace()">再来一局</button>
+                    <button class="btn btn-secondary" onclick="backToModeSelect()">返回主菜单</button>
+                </div>
             </div>
             
             <!-- 移动端触摸控制 -->
