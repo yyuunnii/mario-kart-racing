@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>马里奥卡丁车 - Mario Kart Racing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        #gameTitle {
+            color: #ffd700;
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-shadow: 3px 3px 0 #e74c3c, 6px 6px 0 #3498db;
+            margin-bottom: 10px;
+            letter-spacing: 3px;
+        }
+        
+        #gameContainer {
+            position: relative;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(255, 215, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        #gameCanvas {
+            display: block;
+            background: #2d5016;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .ui-panel {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 10px 15px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        #speedometer {
+            bottom: 20px;
+            right: 20px;
+            text-align: center;
+        }
+        
+        #speedValue {
+            font-size: 2rem;
+            color: #ffd700;
+        }
+        
+        #lapInfo {
+            top: 20px;
+            left: 20px;
+        }
+        
+        #ranking {
+            top: 20px;
+            right: 20px;
+            text-align: right;
+        }
+        
+        #itemBox {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            border: 3px solid #ffd700;
+        }
+        
+        #controls {
+            margin-top: 15px;
+            color: #aaa;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 100;
+        }
+        
+        .screen-title {
+            font-size: 3rem;
+            color: #ffd700;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 0 #e74c3c;
+        }
+        
+        .btn {
+            background: linear-gradient(145deg, #e74c3c, #c0392b);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.3rem;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+            margin: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(231, 76, 60, 0.6);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        #countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 6rem;
+            color: #ffd700;
+            font-weight: bold;
+            text-shadow: 4px 4px 0 #e74c3c;
+            z-index: 50;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="gameTitle">🏎️ MARIO KART 🏎️</h1>
+    
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1000" height="700"></canvas>
+        
+        <div id="ui">
+            <div id="lapInfo" class="ui-panel">
+                <div>圈数</div>
+                <div id="lapValue" style="font-size: 1.5rem; color: #4ade80;">1/3</div>
+            </div>
+            
+            <div id="ranking" class="ui-panel">
+                <div>排名</div>
+                <div id="rankValue" style="font-size: 1.5rem; color: #f472b6;">1/4</div>
+            </div>
+            
+            <div id="speedometer" class="ui-panel">
+                <div>速度</div>
+                <div id="speedValue">0</div>
+                <div style="font-size: 0.8rem;">km/h</div>
+            </div>
+            
+            <div id="itemBox" class="ui-panel">❓</div>
+            
+            <div id="countdown" class="hidden"></div>
+        </div>
+        
+        <div id="startScreen">
+            <div class="screen-title">马里奥卡丁车</div>
+            <p style="color: #aaa; margin-bottom: 20px;">选择你的角色，开始竞速！</p>
+            <button class="btn" onclick="startGame()">开始游戏</button>
+        </div>
+        
+        <div id="gameOverScreen" class="hidden">
+            <div class="screen-title">比赛结束!</div>
+            <div id="finalRank" style="color: #ffd700; font-size: 2rem; margin-bottom: 20px;"></div>
+            <button class="btn" onclick="restartGame()">再来一局</button>
+        </div>
+    </div>
+    
+    <div id="controls">
+        <span style="color: #ffd700;">WASD / 方向键</span> 移动 | 
+        <span style="color: #ffd700;">空格</span> 使用道具 | 
+        <span style="color: #ffd700;">Shift</span> 漂移
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
